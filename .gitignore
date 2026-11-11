@@ -1,0 +1,21 @@
+# Local research, source snapshots and one-off tools
+/tmp/
+
+# Dependencies and extracted test runtime
+node_modules/
+/runtime-test/
+
+# Generated client bundles and release artifacts
+/lib/
+/deliverables/
+/coverage/
+
+# Local environment and transient files
+__pycache__/
+*.py[cod]
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
