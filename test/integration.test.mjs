@@ -30,6 +30,9 @@ test('real Cordis mounts and disposes native settings, RPC and an independent ga
 test('real Schema materializes a single volatile configuration reference',()=>{
   const cfg=plugin.Config({routeMode:'specific',provider:'review',model:'cheap'});
   assert.equal(typeof cfg.get,'function');assert.equal(cfg.get().maxRetries,0);assert.equal(cfg.get().provider,'review');
+  assert.equal(cfg.get().preciseDeletion,true);
+  assert.equal(plugin.Config({preciseDeletion:false}).get().preciseDeletion,false);
+  assert.throws(()=>plugin.Config({preciseDeletion:'false'}));
 });
 test('integrity mismatch cannot become an approval prompt even with ask policy',async()=>{
   const f=fixture({config:{failurePolicy:'ask'}});f.exec.arguments={content:'different action'};

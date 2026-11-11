@@ -86,6 +86,76 @@ test('profile editor saves only changed fields using the original revision', asy
   assert.ok(nodes(page).some(node => node.props?.children?.includes('saved')));
 });
 
+test('precise deletion checkbox defaults on, labels its help, and saves only its boolean change', async () => {
+  const harness = boot(), io = propsOf(harness.plugin);
+  assert.equal(harness.plugin.draftOf().preciseDeletion, true);
+  harness.render(io.props);
+  let page = harness.render(io.props);
+  const checkbox = byId(page, 'ar-preciseDeletion');
+  assert.equal(checkbox.type, 'input');
+  assert.equal(checkbox.props.type, 'checkbox');
+  assert.equal(checkbox.props.checked, true);
+  assert.equal(checkbox.props.disabled, false);
+  assert.ok(nodes(page).some(node => node.type === 'label' && node.props.htmlFor === checkbox.props.id && node.props.children.includes('preciseDeletion')));
+  assert.equal(checkbox.props['aria-describedby'], 'ar-preciseDeletion-help');
+  assert.ok(byId(page, checkbox.props['aria-describedby']).props.children.includes('preciseDeletionHelp'));
+  checkbox.props.onChange({ target: { checked: false, value: 'on' } });
+  page = harness.render(io.props);
+  assert.equal(byId(page, 'ar-preciseDeletion').props.checked, false);
+  assert.ok(nodes(page).some(node => node.props?.children?.includes('unsaved')));
+  await page.props.onSubmit({ preventDefault() {} });
+  assert.equal(io.operations.length, 1);
+  assert.equal(io.operations[0].revision, 7);
+  assert.deepEqual(JSON.parse(JSON.stringify(io.operations[0].ops)), [{ op: 'set', path: ['preciseDeletion'], value: false }]);
+  assert.equal(typeof io.operations[0].ops[0].value, 'boolean');
+  page = harness.render(io.props);
+  assert.equal(byId(page, 'ar-preciseDeletion').props.checked, false);
+  assert.ok(nodes(page).some(node => node.props?.children?.includes('saved')));
+});
+
+test('saved false deletion protection is retained on initial load and unrelated saves', async () => {
+  const harness = boot(), io = propsOf(harness.plugin);
+  io.change({ value: { ...harness.plugin.draftOf(), preciseDeletion: false } });
+  harness.render(io.props);
+  let page = harness.render(io.props);
+  assert.equal(byId(page, 'ar-preciseDeletion').props.checked, false);
+  byId(page, 'ar-timeoutMs').props.onChange({ target: { value: '12000' } });
+  page = harness.render(io.props);
+  await page.props.onSubmit({ preventDefault() {} });
+  assert.equal(io.operations.length, 1);
+  assert.deepEqual(Array.from(io.operations[0].ops, op => op.path[0]), ['timeoutMs']);
+  page = harness.render(io.props);
+  assert.equal(byId(page, 'ar-preciseDeletion').props.checked, false);
+});
+
+test('invalid deletion protection values are rejected, shown, and cannot be saved', async () => {
+  const harness = boot(), io = propsOf(harness.plugin), draft = harness.plugin.draftOf();
+  for (const value of ['false', 'true', 0, 1, null, undefined, {}, []]) {
+    assert.equal(harness.plugin.validateDraft({ ...draft, preciseDeletion: value }, []).preciseDeletion, 'invalidBoolean');
+  }
+  for (const value of [true, false]) {
+    assert.equal(harness.plugin.validateDraft({ ...draft, preciseDeletion: value }, []).preciseDeletion, undefined);
+  }
+  io.change({ value: { ...draft, preciseDeletion: 'false' } });
+  harness.render(io.props);
+  let page = harness.render(io.props);
+  const checkbox = byId(page, 'ar-preciseDeletion');
+  assert.equal(checkbox.props['aria-invalid'], true);
+  assert.equal(checkbox.props['aria-describedby'], 'ar-preciseDeletion-help ar-preciseDeletion-error');
+  assert.ok(byId(page, 'ar-preciseDeletion-error').props.children.includes('invalidBoolean'));
+  byId(page, 'ar-timeoutMs').props.onChange({ target: { value: '12000' } });
+  page = harness.render(io.props);
+  assert.equal(nodes(page).find(node => node.props?.type === 'submit').props.disabled, true);
+  await page.props.onSubmit({ preventDefault() {} });
+  assert.equal(io.operations.length, 0);
+  for (const language of ['zh', 'en']) {
+    assert.equal(typeof harness.plugin.permissionDictionaries[language].invalidBoolean, 'string');
+    assert.ok(harness.plugin.permissionDictionaries[language].invalidBoolean.length > 0);
+  }
+  assert.equal(harness.plugin.permissionDictionaries.zh.preciseDeletion, '精确删除保护');
+  assert.equal(harness.plugin.permissionDictionaries.en.preciseDeletion, 'Precise deletion protection');
+});
+
 test('concurrent host configuration prevents overwriting and keeps the local draft', async () => {
   const harness = boot(), io = propsOf(harness.plugin);
   harness.render(io.props);
@@ -107,6 +177,8 @@ test('read-only profile cannot submit, and held mirror errors stay visible', asy
   assert.ok(nodes(page).some(node => node.props?.children?.includes('readOnly')));
   assert.ok(nodes(page).some(node => node.props?.children?.includes('reloadFailed read failed')));
   assert.equal(byId(page, 'ar-timeoutMs').props.disabled, true);
+  assert.equal(byId(page, 'ar-preciseDeletion').props.disabled, true);
+  assert.equal(byId(page, 'ar-preciseDeletion').props.checked, true);
   await page.props.onSubmit({ preventDefault() {} });
   assert.equal(io.operations.length, 0);
 });

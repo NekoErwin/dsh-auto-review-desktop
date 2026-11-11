@@ -6,8 +6,8 @@ window.__ModuleLoader__.load({
     const { createElement: h, useState, useEffect, useRef, useSyncExternalStore, cloneElement, isValidElement, Children } = React;
     const { Menu, PermissionIconAutoReviewRegular } = require('@deepseek-ai/dsh-client-ui-primitives');
     const NS = 'autoReviewDesktop';
-    const FIELDS = ['routeMode', 'provider', 'model', 'reasoningMode', 'reasoningEffort', 'timeoutMs', 'maxOutputTokens', 'maxInputChars', 'maxReviewsPerTurn', 'maxRetries', 'failurePolicy'];
-    const DEFAULTS = { routeMode: 'follow', provider: '', model: '', reasoningMode: 'low', reasoningEffort: '', timeoutMs: 60000, maxOutputTokens: 2048, maxInputChars: 120000, maxReviewsPerTurn: 100, maxRetries: 0, failurePolicy: 'deny' };
+    const FIELDS = ['routeMode', 'provider', 'model', 'reasoningMode', 'reasoningEffort', 'timeoutMs', 'maxOutputTokens', 'maxInputChars', 'maxReviewsPerTurn', 'maxRetries', 'failurePolicy', 'preciseDeletion'];
+    const DEFAULTS = { routeMode: 'follow', provider: '', model: '', reasoningMode: 'low', reasoningEffort: '', timeoutMs: 60000, maxOutputTokens: 2048, maxInputChars: 120000, maxReviewsPerTurn: 100, maxRetries: 0, failurePolicy: 'deny', preciseDeletion: true };
     const LIMITS = { timeoutMs: [1000, 180000], maxOutputTokens: [256, 16384], maxInputChars: [4000, 1000000], maxReviewsPerTurn: [1, 1000], maxRetries: [0, 1] };
     const en = {
       permissionLabel: 'Auto review (Desktop)', permissionBadge: 'PLUS',
@@ -33,7 +33,9 @@ window.__ModuleLoader__.load({
       saveFailed: 'Save failed. Host settings were reloaded; your draft is kept. Reload the saved settings before retrying if another editor changed them.',
       reload: 'Reload saved settings', reloadAll: 'Reload settings', reloading: 'Reloading…', reloadFailed: 'Could not reload settings.',
       conflict: 'Settings changed elsewhere. Reload saved settings to avoid overwriting that change.',
-      invalidNumber: 'Enter a whole number from {min} to {max}.', modelRequired: 'Choose an available configured model.',
+      invalidNumber: 'Enter a whole number from {min} to {max}.', invalidBoolean: 'Choose an enabled or disabled state.', modelRequired: 'Choose an available configured model.',
+      preciseDeletion: 'Precise deletion protection',
+      preciseDeletionHelp: 'Enabled by default. Review must verify the resolved targets and deletion scope; insufficient evidence is never automatically approved. Inspected files or directories with a clear scope may be allowed. This is a model review policy, not an operating-system deletion block.',
       pendingLoad: 'Wait for settings to finish loading.',
       usageTitle: 'Review usage', usageScope: 'This Host run only · Counts reset when the Host restarts. Loaded once when this page opens; refresh manually for the latest counts.',
       usageLoading: 'Loading review usage…', usageRefresh: 'Refresh usage', usageFailure: 'Could not load review usage.', usageInvalid: 'The Host returned an unsupported usage response.',
@@ -66,7 +68,9 @@ window.__ModuleLoader__.load({
       saveFailed: '保存失败。已重新读取服务端设置，当前草稿仍保留；若其他编辑器修改了设置，请先重新载入已保存设置。',
       reload: '重新载入已保存设置', reloadAll: '重新读取设置', reloading: '正在重新读取…', reloadFailed: '重新读取设置失败。',
       conflict: '设置已在其他位置修改。请重新载入已保存设置，避免覆盖该修改。',
-      invalidNumber: '请输入 {min} 至 {max} 之间的整数。', modelRequired: '请选择当前可用的已配置模型。',
+      invalidNumber: '请输入 {min} 至 {max} 之间的整数。', invalidBoolean: '请选择开启或关闭状态。', modelRequired: '请选择当前可用的已配置模型。',
+      preciseDeletion: '精确删除保护',
+      preciseDeletionHelp: '默认开启。审查要求核实解析后的目标和删除范围；证据不足不自动批准。经检查、范围明确的文件或目录可允许。这是模型审查策略，而非操作系统删除拦截。',
       pendingLoad: '请等待设置读取完成。',
       usageTitle: '审查用量', usageScope: '仅统计本次服务运行，服务重启后归零。打开页面时读取一次；可手动刷新查看最新计数。',
       usageLoading: '正在读取审查用量…', usageRefresh: '刷新用量', usageFailure: '审查用量读取失败。', usageInvalid: '服务端返回了不支持的用量格式。',
@@ -89,6 +93,7 @@ window.__ModuleLoader__.load({
     }
     function validateDraft(draft, choices) {
       const errors = {};
+      if (typeof draft.preciseDeletion !== 'boolean') errors.preciseDeletion = 'invalidBoolean';
       if (draft.routeMode === 'specific' && !choices.some(choice => choice.provider === draft.provider && choice.model.id === draft.model)) errors.model = 'modelRequired';
       const picked = choices.find(choice => choice.provider === draft.provider && choice.model.id === draft.model);
       if (draft.reasoningMode === 'specific' && (draft.routeMode !== 'specific' || !picked?.model.reasoning?.efforts?.some(effort => effort.id === draft.reasoningEffort))) errors.reasoningEffort = 'effortMissing';
@@ -119,6 +124,7 @@ window.__ModuleLoader__.load({
 [data-auto-review-settings] .ar-field{display:flex;flex-direction:column;gap:6px;min-width:0}
 [data-auto-review-settings] .ar-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 [data-auto-review-settings] input,[data-auto-review-settings] select{width:100%;min-width:0;height:36px;border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md,8px);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);padding:6px 10px;font:inherit}
+[data-auto-review-settings] input[type=checkbox]{width:16px;height:16px;min-width:16px;padding:0;margin:0;align-self:flex-start;accent-color:var(--dsw-alias-state-business-primary)}
 [data-auto-review-settings] input:focus-visible,[data-auto-review-settings] select:focus-visible,[data-auto-review-settings] button:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}
 [data-auto-review-settings] input[aria-invalid=true],[data-auto-review-settings] select[aria-invalid=true]{border-color:var(--dsw-alias-state-error-primary)}
 [data-auto-review-settings] button{font:inherit;border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md,8px);padding:7px 12px;cursor:pointer;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-settings-card-fill)}
@@ -310,6 +316,12 @@ window.__ModuleLoader__.load({
           number('timeoutMs'), number('maxOutputTokens'), number('maxInputChars'), number('maxReviewsPerTurn'),
           field(t('maxRetries'), select('maxRetries', [option('0', t('retryNone')), option('1', t('retryOnce'))], value => update('maxRetries', Number(value))), null, null, 'ar-maxRetries'),
         ), help(t('inputHelp'))),
+        h('div', { className: 'ar-card' }, field(t('preciseDeletion'), h('input', {
+          id: 'ar-preciseDeletion', type: 'checkbox', checked: draft.preciseDeletion, disabled,
+          'aria-invalid': errors.preciseDeletion ? true : undefined,
+          'aria-describedby': `ar-preciseDeletion-help${errors.preciseDeletion ? ' ar-preciseDeletion-error' : ''}`,
+          onChange: event => update('preciseDeletion', event.target.checked),
+        }), t('preciseDeletionHelp'), errors.preciseDeletion, 'ar-preciseDeletion')),
         h('div', { className: 'ar-card' }, field(t('failurePolicy'), select('failurePolicy', [option('deny', t('deny')), option('ask', t('ask'))]), t('failureHelp'), null, 'ar-failurePolicy')),
         h('div', { className: 'ar-actions' },
           h('button', { type: 'submit', className: 'ar-primary', disabled: disabled || !dirty || conflict || Object.keys(errors).length > 0 }, t(busy ? 'saving' : 'save')),

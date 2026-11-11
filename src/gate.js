@@ -1,4 +1,5 @@
 import { isDesktopReview } from './preset.js';
+import { reviewPolicy, deletionEvidenceMessage, deletionActivityKey } from './deletion-policy.js';
 import { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy';
 import { setApprovalPolicy } from '@deepseek-ai/dsh-user-approval';
 import { REVIEW_POLICY, snapshotAutoReview, reviewMessages, readDecision, denied, askUser, failed } from '../vendor/official.js';
@@ -23,6 +24,8 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
     let auth;
     let exactAction;
     let sourceRoute;
+    let deletionEvidence;
+    let deletionActivity;
     let currentAttempt;
     let finalRecorded=false;
     let anyDispatch=false;
@@ -52,6 +55,7 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
       reviewSignal.throwIfAborted();
       if(cancelled(exec)) throw new ReviewError('CANCELLED','Review no longer applies');
       if(configKey(normalizeConfig(readConfig()))!==configKey(c) || actionKey(exec)!==exactAction) throw new ReviewError('STALE','Review settings or pending action changed');
+      if(c.preciseDeletion && (JSON.stringify(deletionEvidenceMessage(session,exec))!==deletionEvidence || deletionActivityKey(session,exec)!==deletionActivity)) throw new ReviewError('STALE','Deletion inspection evidence or tool activity changed during review');
       const current=capture(exec.agent,exec,await ctx.workingDirectory.ensure(exec.agent,reviewSignal));
       if(authorizationKey(current)!==auth || JSON.stringify([current.provider,current.model])!==sourceRoute) throw new ReviewError('STALE','User authorization or request route changed during review');
     };
@@ -64,8 +68,13 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
         shown.set(frozen.pending.key,frozen.pending.schema);
         auth=authorizationKey(frozen);
         sourceRoute=JSON.stringify([frozen.provider,frozen.model]);
+        const system=reviewPolicy(REVIEW_POLICY,c);
         const messages=reviewMessages(frozen);
-        if(promptSize(REVIEW_POLICY,messages)>c.maxInputChars) throw new ReviewError('INPUT_BUDGET','Review evidence exceeds its character budget; evidence was not truncated');
+        const evidence=c.preciseDeletion?deletionEvidenceMessage(session,exec):undefined;
+        deletionEvidence=JSON.stringify(evidence);
+        deletionActivity=c.preciseDeletion?deletionActivityKey(session,exec):undefined;
+        if(evidence)messages.splice(messages.length-1,0,evidence);
+        if(promptSize(system,messages)>c.maxInputChars) throw new ReviewError('INPUT_BUDGET','Review evidence exceeds its character budget; evidence was not truncated');
         let decision;
         for(let attempt=0;attempt<=c.maxRetries;attempt++) {
           const ticket=budget.take(session,c.maxReviewsPerTurn);
@@ -77,7 +86,7 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
             attemptState.prepared=prepared;
             reviewSignal.throwIfAborted();
             anyDispatch=true;
-            const stream=prepared.stream(Object.freeze({...prepared.config,system:REVIEW_POLICY,messages,
+            const stream=prepared.stream(Object.freeze({...prepared.config,system,messages,
               sessionId:session.id,purpose:'auto-review',signal:reviewSignal}));
             decision=await parse(observeUsage(stream,attemptState.measurement,reviewSignal));
             await validateFresh(reviewSignal);

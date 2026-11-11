@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 export const DEFAULTS = Object.freeze({
   routeMode: 'follow', provider: '', model: '', reasoningMode: 'low', reasoningEffort: '',
   timeoutMs: 60000, maxOutputTokens: 2048, maxInputChars: 120000,
-  maxReviewsPerTurn: 100, maxRetries: 0, failurePolicy: 'deny',
+  maxReviewsPerTurn: 100, maxRetries: 0, failurePolicy: 'deny', preciseDeletion: true,
 });
 
 export class ReviewError extends Error {
@@ -20,6 +20,7 @@ export function normalizeConfig(raw = {}) {
     if (!Number.isSafeInteger(c[key]) || c[key] < min || c[key] > max) throw new ReviewError('CONFIG', `Invalid ${key}`);
   }
   for (const key of ['provider','model','reasoningEffort']) if (typeof c[key] !== 'string' || c[key].length > 256) throw new ReviewError('CONFIG', `Invalid ${key}`);
+  if (typeof c.preciseDeletion !== 'boolean') throw new ReviewError('CONFIG', 'Invalid preciseDeletion');
   // An incomplete draft may be saved; it never dispatches or falls back to the main route.
   return Object.freeze(c);
 }

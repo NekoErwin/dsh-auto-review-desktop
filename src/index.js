@@ -17,6 +17,7 @@ export const Config=Schema.object({
   maxInputChars:Schema.number().min(4000).max(1000000).step(1).default(DEFAULTS.maxInputChars),
   maxReviewsPerTurn:Schema.number().min(1).max(1000).step(1).default(DEFAULTS.maxReviewsPerTurn),
   maxRetries:Schema.union([0,1]).default(DEFAULTS.maxRetries),
+  preciseDeletion:Schema.boolean().default(DEFAULTS.preciseDeletion),
   failurePolicy:Schema.union(['deny','ask']).default(DEFAULTS.failurePolicy),
 }).volatile();
 
