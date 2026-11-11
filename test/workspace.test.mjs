@@ -159,7 +159,7 @@ test('auto-answer cannot be borrowed by a different call agent reason or pre-dis
 
 test('review denial and configured failure fallback delegate one human approval, never auto-allow',async()=>{
   for(const failure of [false,true]) {
-    const f=escalationFixture({workspaceEscalation:'review',failurePolicy:'ask'});const runtime=createReviewGate(f.ctx,f.readConfig);let human=0;
+    const f=escalationFixture({workspaceEscalation:'review',failurePolicy:'ask',denialPolicy:'ask'});const runtime=createReviewGate(f.ctx,f.readConfig);let human=0;
     f.setStream(()=>answer(failure?'invalid':'{"risk":"medium","decision":"deny","reason":"Missing exact authority"}'));
     const outcome=await runtime.execute(f.exec,()=>runtime.approval(request(f),async()=>{human++;return 'rejected';}));
     assert.equal(outcome,'rejected');assert.equal(human,1);

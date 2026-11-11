@@ -1,5 +1,7 @@
 import { isDesktopReview, desktopMode } from './preset.js';
 import { createWorkspaceRouter } from './workspace.js';
+import { snapshotReview, DELEGATED_AUTHORITY_POLICY } from './authorization.js';
+import { canAskHuman } from './delegation.js';
 import { reviewPolicy, deletionEvidenceMessage, deletionActivityKey } from './deletion-policy.js';
 import { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy';
 import { setApprovalPolicy } from '@deepseek-ai/dsh-user-approval';
@@ -50,7 +52,7 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
         durationMs:Date.now()-attemptState.start,usage:attemptState.measurement.usage,...entry});
     };
     const capture=(agent,execution,cwd)=>{
-      try{return snapshot(agent,execution,cwd,shown);}
+      try{return snapshotReview(ctx,agent,execution,cwd,shown,snapshot);}
       catch {throw new ReviewError('INTEGRITY','Pending action and retained evidence are inconsistent');}
     };
     const validateFresh=async reviewSignal=>{
@@ -59,6 +61,9 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
       if(configKey(normalizeConfig(readConfig()))!==configKey(c) || actionKey(exec)!==exactAction) throw new ReviewError('STALE','Review settings or pending action changed');
       if(c.preciseDeletion && (JSON.stringify(deletionEvidenceMessage(session,exec))!==deletionEvidence || deletionActivityKey(session,exec)!==deletionActivity)) throw new ReviewError('STALE','Deletion inspection evidence or tool activity changed during review');
       const current=capture(exec.agent,exec,await ctx.workingDirectory.ensure(exec.agent,reviewSignal));
+      reviewSignal.throwIfAborted();
+      if(cancelled(exec) || desktopMode(session)!==initialMode)throw new ReviewError('CANCELLED','Review no longer applies');
+      if(configKey(normalizeConfig(readConfig()))!==configKey(c) || actionKey(exec)!==exactAction)throw new ReviewError('STALE','Review settings or pending action changed');
       if(authorizationKey(current)!==auth || JSON.stringify([current.provider,current.model])!==sourceRoute) throw new ReviewError('STALE','User authorization or request route changed during review');
     };
     try {
@@ -70,7 +75,7 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
         shown.set(frozen.pending.key,frozen.pending.schema);
         auth=authorizationKey(frozen);
         sourceRoute=JSON.stringify([frozen.provider,frozen.model]);
-        const system=reviewPolicy(REVIEW_POLICY,c);
+        const system=reviewPolicy(REVIEW_POLICY,c)+(session.header.origin==='subagent'?DELEGATED_AUTHORITY_POLICY:'');
         const messages=reviewMessages(frozen);
         const evidence=c.preciseDeletion?deletionEvidenceMessage(session,exec):undefined;
         deletionEvidence=JSON.stringify(evidence);
@@ -104,7 +109,7 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
         }
       },{signal,timeoutMs:c.timeoutMs});
       if(cancelled(exec)) return finish({kind:'cancel'});
-      if(verdict.decision==='deny' && ctx.approval.overrideOf(session)==='never') return finish(denied(exec,verdict.reason));
+      if(verdict.decision==='deny' && (c.denialPolicy!=='ask' || !canAskHuman(ctx,readConfig,session))) return finish(denied(exec,verdict.reason));
       const downstream=await downstreamOnce();
       if(cancelled(exec)) return finish({kind:'cancel'});
       if(Date.now()>=expiresAt)throw new ReviewError('TIMEOUT','Review authorization expired');
@@ -116,7 +121,7 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
       recordAttempt(currentAttempt,{outcome:code==='CANCELLED'?'cancelled':'failed',code});
       if(code==='CANCELLED') return finish({kind:'cancel'},code);
       const mayAsk=new Set(['TIMEOUT','INPUT_BUDGET','BUDGET','CIRCUIT_OPEN','MODEL_UNAVAILABLE','CONFIG','INVALID_REVIEW']);
-      if(c?.failurePolicy==='ask' && !downstreamPromise && mayAsk.has(code) && ctx.approval.overrideOf(session)!=='never') {
+      if(c?.failurePolicy==='ask' && !downstreamPromise && mayAsk.has(code) && canAskHuman(ctx,readConfig,session)) {
         const downstream=await downstreamOnce();
         if(cancelled(exec)) return finish({kind:'cancel'});
         if(downstream.kind!=='allow') return finish(downstream,code);
@@ -137,6 +142,10 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
       if(!applicationShutdown) for(const session of ctx.sessions.list()) {
         try {
           if(!isAuto(session))continue;
+          // Native cancel synchronously aborts the turn (including scheduler
+          // queues) and clears pending inbox work. Do not await whenIdle here:
+          // a tool may be unloading its own reviewer.
+          ctx.agents?.get?.(session.id)?.cancel?.({kind:'hook',reason:'Enhanced review is unloading; retry after selecting a permission mode.'});
           setSandboxMode(session,'workspace-write');
           setApprovalPolicy(session,'ask');
         } catch {

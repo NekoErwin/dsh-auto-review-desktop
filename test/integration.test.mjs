@@ -16,7 +16,7 @@ test('real Cordis mounts and disposes native settings, RPC and an independent ga
     commands:{register(def){registered.set(def.name,def);return()=>registered.delete(def.name);}},
     connection:{register(owner,channel,handler){assert.equal(typeof owner.webServer.register,'function');assert.equal(channel,'/auto-review-desktop');rpc=handler;return()=>{rpc=undefined;};}},
     webServer:{register(){return()=>{};}},
-    tools:{},permissionPresets:{...f.ctx.permissionPresets,registerAuto(){throw Error('Official Auto must remain independent');}}
+    tools:{},agents:{get(){},isOwnedBy(){return false;}},permissionPresets:{...f.ctx.permissionPresets,registerAuto(){throw Error('Official Auto must remain independent');}}
   }))ctx.provide(key,value);
   const fiber=ctx.plugin(plugin,{});await fiber;
   assert.equal(fiber.state,2);assert(presets['auto-review-desktop']);assert.equal(settings,1);assert.equal(typeof rpc,'function');

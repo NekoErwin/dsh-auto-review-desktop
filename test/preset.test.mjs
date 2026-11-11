@@ -31,7 +31,7 @@ test('real official and Desktop gates coexist and only the selected reviewer run
   f.ctx.llm.stream=()=>{officialCalls++;return answer();};
   for(const [key,value] of Object.entries({...f.ctx,permissionPresets:service,
     shell:{sandboxMode:'workspace-write'},settings:{configure:()=>()=>{}},
-    commands:{register:()=>()=>{}},connection:{register:()=>()=>{}},webServer:{},tools:{},
+    commands:{register:()=>()=>{}},connection:{register:()=>()=>{}},webServer:{},tools:{},agents:{get(){},isOwnedBy(){return false;}},
   }))ctx.provide(key,value);
   const originalRegisterAuto=service.registerAuto;
   const officialFiber=ctx.plugin(official);await officialFiber;
@@ -40,7 +40,7 @@ test('real official and Desktop gates coexist and only the selected reviewer run
   assert.equal(service.registerAuto,originalRegisterAuto);
   assert(service.catalog().options.some(o=>o.value==='auto'));
   assert(service.catalog().options.some(o=>o.value===DESKTOP_PRESET));
-  const execute=()=>ctx.waterfall('tools/pre-execute',f.exec,f.next);
+  const execute=async()=>{try{return await ctx.waterfall('tools/pre-execute',f.exec,f.next);}finally{ctx.emit('tools/result',f.exec);}};
   service.set(f.session,'auto');
   assert.equal(service.current(f.session),'auto');
   assert.equal((await execute()).kind,'allow');assert.equal(officialCalls,1);assert.equal(f.requests.length,0);

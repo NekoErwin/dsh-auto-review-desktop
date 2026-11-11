@@ -2,7 +2,8 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { parsePatch } from '@deepseek-ai/dsh-fs-patch';
 import { desktopMode } from './preset.js';
 import { configKey, normalizeConfig, actionKey, authorizationKey } from './runtime.js';
-import { snapshotAutoReview } from '../vendor/official.js';
+import { snapshotReview } from './authorization.js';
+import { canAskHuman } from './delegation.js';
 import { nativeCompatible } from './native-compatibility.js';
 
 const MUTATIONS=new Set(['write','edit','apply_patch']);
@@ -54,7 +55,7 @@ export function createWorkspaceRouter(ctx,readConfig,review,isAccepting) {
       if(exec.signal.aborted || !isAccepting())return {kind:'cancel'};
       // Integrity is required even when no model is called.
       const cwd=await ctx.workingDirectory.ensure(exec.agent,exec.signal);
-      const frozen=snapshotAutoReview(exec.agent,exec,cwd,new Map());
+      const frozen=snapshotReview(ctx,exec.agent,exec,cwd,new Map());
       const args=exec.arguments??{};
       let bypass=false;
       let checks=[];
@@ -85,8 +86,8 @@ export function createWorkspaceRouter(ctx,readConfig,review,isAccepting) {
       else if(config.workspaceEscalation==='review')decision=await review(exec,next);
       else {
         const downstream=await next();
-        decision=downstream.kind!=='allow'?downstream:ctx.approval.overrideOf(exec.agent.session)==='never'
-          ?deny('Outside-workspace or unsupported action requires approval, but prompts are disabled.')
+        decision=downstream.kind!=='allow'?downstream:!canAskHuman(ctx,readConfig,exec.agent.session)
+          ?deny('Outside-workspace or unsupported action requires human approval, but this session or subagent policy forbids it.')
           :{kind:'ask',reason:'Approve this exact outside-workspace or unsupported action once. The workspace sandbox remains in force unless this tool separately requests escalation.',displayReason:{en:'Approve this outside-workspace or unsupported action once.',zh:'仅批准本次工作区外或不受工作区沙箱约束的操作。'}};
       }
       if(decision.kind==='allow' || decision.kind==='ask')remember(exec,config,frozen,checks,bypass);
@@ -101,7 +102,7 @@ export function createWorkspaceRouter(ctx,readConfig,review,isAccepting) {
     if(!ticket && (!exec.agent || desktopMode(exec.agent.session)!=='workspace'))return next();
     if(ticket) {
       const cwd=await ctx.workingDirectory.ensure(exec.agent,exec.signal);
-      const current=snapshotAutoReview(exec.agent,exec,cwd,new Map());
+      const current=snapshotReview(ctx,exec.agent,exec,cwd,new Map());
       if(!isAccepting() || exec.signal.aborted || desktopMode(exec.agent.session)!==ticket.mode
         || configKey(normalizeConfig(readConfig()))!==ticket.config || actionKey(exec)!==ticket.action
         || authorizationKey(current)!==ticket.authority || (ticket.fastPath && !trusted(exec))
@@ -126,17 +127,20 @@ export function createWorkspaceRouter(ctx,readConfig,review,isAccepting) {
     const config=normalizeConfig(readConfig());
     const signal=AbortSignal.any([exec.signal,...req.signal?[req.signal]:[]]);
     const cwd=await ctx.workingDirectory.ensure(exec.agent,signal);
-    const authority=authorizationKey(snapshotAutoReview(exec.agent,exec,cwd,new Map()));
+    const authority=authorizationKey(snapshotReview(ctx,exec.agent,exec,cwd,new Map()));
     const never=()=> (ctx.approval.effectivePolicy?.(exec.agent.session)??ctx.approval.overrideOf(exec.agent.session))==='never';
     const fresh=async()=> {
       if(signal.aborted || !state.active || !isAccepting() || never()
         || desktopMode(exec.agent.session)!=='workspace' || configKey(normalizeConfig(readConfig()))!==state.config)return false;
       const cwd=await ctx.workingDirectory.ensure(exec.agent,signal);
-      return authorizationKey(snapshotAutoReview(exec.agent,exec,cwd,new Map()))===authority;
+      const unchanged=authorizationKey(snapshotReview(ctx,exec.agent,exec,cwd,new Map()))===authority;
+      return unchanged && !signal.aborted && state.active && isAccepting() && !never()
+        && desktopMode(exec.agent.session)==='workspace' && configKey(normalizeConfig(readConfig()))===state.config;
     };
     const human=async()=> {
+      if(!canAskHuman(ctx,readConfig,exec.agent.session))return 'rejected';
       const outcome=await next();
-      return outcome==='allowed-once' && !await fresh()?'rejected':outcome;
+      return outcome==='allowed-once' && (!canAskHuman(ctx,readConfig,exec.agent.session) || !await fresh())?'rejected':outcome;
     };
     if(!await fresh())return signal.aborted?'cancelled':'rejected';
     if(config.workspaceEscalation==='ask')return human();

@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 export const DEFAULTS = Object.freeze({
   routeMode: 'follow', provider: '', model: '', reasoningMode: 'low', reasoningEffort: '',
   timeoutMs: 60000, maxOutputTokens: 2048, maxInputChars: 120000,
-  maxReviewsPerTurn: 100, maxRetries: 0, failurePolicy: 'deny', preciseDeletion: true, workspaceEscalation: 'ask',
+  maxReviewsPerTurn: 100, maxRetries: 0, failurePolicy: 'deny', denialPolicy: 'deny', subagentApproval: 'inherit', preciseDeletion: true, workspaceEscalation: 'ask',
 });
 
 export class ReviewError extends Error {
@@ -13,7 +13,7 @@ export function normalizeConfig(raw = {}) {
   const c = { ...DEFAULTS, ...raw };
   const members = Object.keys(DEFAULTS);
   if (Object.keys(raw).some(key => !members.includes(key))) throw new ReviewError('CONFIG', 'Unknown review setting');
-  for (const [key, choices] of Object.entries({routeMode:['follow','specific'], reasoningMode:['low','default','specific'], failurePolicy:['deny','ask'], workspaceEscalation:['ask','review']})) {
+  for (const [key, choices] of Object.entries({routeMode:['follow','specific'], reasoningMode:['low','default','specific'], failurePolicy:['deny','ask'], denialPolicy:['deny','ask'], subagentApproval:['inherit','deny'], workspaceEscalation:['ask','review']})) {
     if (!choices.includes(c[key])) throw new ReviewError('CONFIG', `Invalid ${key}`);
   }
   for (const [key,min,max] of [['timeoutMs',1000,180000],['maxOutputTokens',256,16384],['maxInputChars',4000,1000000],['maxReviewsPerTurn',1,1000],['maxRetries',0,1]]) {

@@ -41,11 +41,11 @@ node scripts/build.mjs
 python scripts/package-deliverables.py
 ```
 
-当前源码版本 `0.3.1`。输出在 `deliverables/`，只包含显式列出的源码和生成物，不包含运行时缓存、临时文件或 Git 数据。正式版本安装包已有时不覆盖，同版本重建输出 `-local.tgz`。正式发布先递增版本。
+当前源码版本 `0.4.1`。输出在 `deliverables/`，只包含显式列出的源码和生成物，不包含运行时缓存、临时文件或 Git 数据。正式版本安装包已有时不覆盖，同版本重建输出 `-local.tgz`。正式发布先递增版本。
 
 源码 ZIP 包含测试与开发说明；安装 TGZ 包含原生客户端构建。新检出先构建再打包。安装必须使用宿主插件管理器，不能手工改 profile composition 或运行 profile 包管理器。管理器返回 `application: applied` 才表示本次变更已经应用；需要刷新现有 Desktop 页面读取新客户端，不要启动替代服务器冒充验证。
 
-安装后核实版本、已启用 entry、Config 默认 `workspaceEscalation: ask` 和 `preciseDeletion: true`，并检查已有 `auto-review-desktop` 完全访问身份仍保留。界面截图/真实页面未取得时明确记录验证限制，不把 VM 组件测试称为实际渲染验证。
+安装后核实版本、已启用 entry、Config 默认 `workspaceEscalation: ask`、`preciseDeletion: true`、`denialPolicy: deny` 和 `subagentApproval: inherit`，并检查已有 `auto-review-desktop` 完全访问身份仍保留。子代理测试应使用真实宿主 capture/append、spawn/fork provider、AgentRegistry 和 pinInitialPermission，区分组合接缝测试与完整 AgentLoop/真实模型端到端。UI 汇总必须调用原生 pending 对象，不新增代理可调用的批准 RPC；覆盖同子代理并发、原生取消、其他页面答复及插件重载。界面截图/真实页面未取得时明确记录验证限制，不把 VM 组件测试称为实际渲染验证。
 
 ## 提交
 

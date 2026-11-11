@@ -6,8 +6,8 @@ window.__ModuleLoader__.load({
     const { createElement: h, useState, useEffect, useRef, useSyncExternalStore, cloneElement, isValidElement, Children } = React;
     const { Menu, PermissionIconAutoReviewRegular } = require('@deepseek-ai/dsh-client-ui-primitives');
     const NS = 'autoReviewDesktop';
-    const FIELDS = ['routeMode', 'provider', 'model', 'reasoningMode', 'reasoningEffort', 'timeoutMs', 'maxOutputTokens', 'maxInputChars', 'maxReviewsPerTurn', 'maxRetries', 'failurePolicy', 'preciseDeletion', 'workspaceEscalation'];
-    const DEFAULTS = { routeMode: 'follow', provider: '', model: '', reasoningMode: 'low', reasoningEffort: '', timeoutMs: 60000, maxOutputTokens: 2048, maxInputChars: 120000, maxReviewsPerTurn: 100, maxRetries: 0, failurePolicy: 'deny', preciseDeletion: true, workspaceEscalation: 'ask' };
+    const FIELDS = ['routeMode', 'provider', 'model', 'reasoningMode', 'reasoningEffort', 'timeoutMs', 'maxOutputTokens', 'maxInputChars', 'maxReviewsPerTurn', 'maxRetries', 'failurePolicy', 'preciseDeletion', 'workspaceEscalation', 'denialPolicy', 'subagentApproval'];
+    const DEFAULTS = { routeMode: 'follow', provider: '', model: '', reasoningMode: 'low', reasoningEffort: '', timeoutMs: 60000, maxOutputTokens: 2048, maxInputChars: 120000, maxReviewsPerTurn: 100, maxRetries: 0, failurePolicy: 'deny', preciseDeletion: true, workspaceEscalation: 'ask', denialPolicy: 'deny', subagentApproval: 'inherit' };
     const LIMITS = { timeoutMs: [1000, 180000], maxOutputTokens: [256, 16384], maxInputChars: [4000, 1000000], maxReviewsPerTurn: [1, 1000], maxRetries: [0, 1] };
     const en = {
       permissionFullLabel: 'Auto review (Full access)', permissionWorkspaceLabel: 'Auto review (Workspace)',
@@ -33,6 +33,14 @@ window.__ModuleLoader__.load({
       inputHelp: 'Characters, not tokens. Exceeding a limit follows the failure policy instead of silently trimming authorization evidence.',
       failurePolicy: 'When review cannot complete', deny: 'Deny the action', ask: 'Ask for human approval',
       failureHelp: 'A timeout, invalid response, unavailable model, or exhausted budget follows this policy. Review failures never automatically allow an action.',
+      denialPolicy: 'When the model denies an action', denialHelp: 'Deny by default. Human fallback asks about this exact action and remains subject to the session approval policy.',
+      subagentApproval: 'Human approval for child agents', subagentInherit: 'Inherit the parent policy', subagentDeny: 'Disallow human approval',
+      subagentHelp: 'Ordinary child agents inherit enhanced review. This setting only controls human approval; it does not disable model review. Requests appear in the originating child and in its root conversation.',
+      invalidDecisionPolicy: 'Choose deny or human approval.', invalidSubagentApproval: 'Choose inherit or disallow human approval.',
+      childApprovals: 'Child-agent approvals ({count})', childApprovalsHelp: 'Listed in the order received. Each decision applies only to its original request. Requests hidden before this panel loaded appear when the native UI reveals them.',
+      childApprovalDetails: 'Original action and reason', childApprovalArguments: 'Complete tool arguments', childApprovalReason: 'Approval reason', childApprovalAllow: 'Allow once', childApprovalReject: 'Reject',
+      childApprovalLoading: 'Loading the original tool call…', childApprovalMissing: 'The original tool call could not be verified. Open the child conversation to inspect it.', childApprovalRetry: 'Reload action details', childApprovalFailed: 'Could not answer this request.',
+      childApprovalNoCall: 'This request has no correlated tool call; inspect it in the child conversation.',
       save: 'Save settings', saving: 'Saving…', saved: 'Saved. Future reviews use these profile settings.', unsaved: 'Unsaved changes', clean: 'Saved configuration',
       saveFailed: 'Save failed. Host settings were reloaded; your draft is kept. Reload the saved settings before retrying if another editor changed them.',
       reload: 'Reload saved settings', reloadAll: 'Reload settings', reloading: 'Reloading…', reloadFailed: 'Could not reload settings.',
@@ -41,7 +49,7 @@ window.__ModuleLoader__.load({
       preciseDeletion: 'Precise deletion protection',
       preciseDeletionHelp: 'Enabled by default for Full access actions and Workspace actions sent for model review. Workspace operations that skip review do not receive deletion review. Review must verify resolved targets and scope; insufficient evidence must not be automatically approved. This is a model policy, not an operating-system deletion block.',
       workspaceEscalation: 'Outside-workspace actions', workspaceAsk: 'Human approval (default)', workspaceReview: 'Model review',
-      workspaceEscalationHelp: 'Only controls outside-workspace actions and permission escalation in Workspace mode. Full access still reviews every action. Approval applies once and does not change the session mode. The sandbox does not provide operating-system isolation for network access or reads.',
+      workspaceEscalationHelp: 'Only controls outside-workspace actions and permission escalation in Workspace mode. Full access still reviews every action. Approval applies once and does not change the session mode. A model denial stays denied unless human fallback is explicitly enabled. The sandbox does not provide operating-system isolation for network access or reads.',
       invalidWorkspaceEscalation: 'Choose human approval or model review.',
       pendingLoad: 'Wait for settings to finish loading.',
       usageTitle: 'Review usage', usageScope: 'This Host run only · Counts reset when the Host restarts. Loaded once when this page opens; refresh manually for the latest counts.',
@@ -74,6 +82,14 @@ window.__ModuleLoader__.load({
       inputHelp: '这里限制的是字符数，不是 token。超限时按失败策略处理，不会静默裁剪授权依据。',
       failurePolicy: '审查无法完成时', deny: '拒绝操作', ask: '交由人工审批',
       failureHelp: '超时、响应无效、模型不可用或预算耗尽时按此策略处理。审查失败不会自动放行。',
+      denialPolicy: '模型拒绝操作时', denialHelp: '默认直接拒绝。选择人工回退后，仅询问这一次具体操作，仍须遵守会话的人工审批策略。',
+      subagentApproval: '子代理人工审批', subagentInherit: '继承父代理策略', subagentDeny: '禁止人工审批',
+      subagentHelp: '普通子代理继承增强审查。本项只控制人工审批，不关闭模型审查。请求同时保留在原子会话，并汇总到所属主会话。',
+      invalidDecisionPolicy: '请选择拒绝操作或人工审批。', invalidSubagentApproval: '请选择继承父策略或禁止人工审批。',
+      childApprovals: '子代理待审批（{count}）', childApprovalsHelp: '按收到顺序列出，每次决定只作用于原请求。面板载入前被原生界面暂时遮住的请求，会在原生界面重新显示后补入。',
+      childApprovalDetails: '原始操作及审批理由', childApprovalArguments: '完整工具参数', childApprovalReason: '审批理由', childApprovalAllow: '允许一次', childApprovalReject: '拒绝',
+      childApprovalLoading: '正在读取原始工具调用…', childApprovalMissing: '无法核实原始工具调用，请打开子会话查看。', childApprovalRetry: '重新读取操作详情', childApprovalFailed: '审批答复失败。',
+      childApprovalNoCall: '请求没有关联工具调用，请在子会话内核实。',
       save: '保存设置', saving: '正在保存…', saved: '已保存。后续审查将使用这些配置。', unsaved: '有未保存修改', clean: '已保存的配置',
       saveFailed: '保存失败。已重新读取服务端设置，当前草稿仍保留；若其他编辑器修改了设置，请先重新载入已保存设置。',
       reload: '重新载入已保存设置', reloadAll: '重新读取设置', reloading: '正在重新读取…', reloadFailed: '重新读取设置失败。',
@@ -82,7 +98,7 @@ window.__ModuleLoader__.load({
       preciseDeletion: '精确删除保护',
       preciseDeletionHelp: '默认开启，用于完全访问模式及工作区模式中送交模型审查的动作。工作区免审操作不经过删除审查。审查须核实解析后的目标与范围，证据不足时不得自动批准。这是模型策略，而非操作系统删除拦截。',
       workspaceEscalation: '工作区外操作', workspaceAsk: '人工审批（默认）', workspaceReview: '模型审查',
-      workspaceEscalationHelp: '仅配置工作区模式的外部动作及提权处理；完全访问模式仍逐次送审。批准只针对本次操作，不改变会话模式。沙箱对网络访问和读取并非操作系统级隔离。',
+      workspaceEscalationHelp: '仅配置工作区模式的外部动作及提权处理；完全访问模式仍逐次送审。批准只针对本次操作，不改变会话模式。模型拒绝默认直接生效，仅在显式启用人工回退后才询问用户。沙箱对网络访问和读取并非操作系统级隔离。',
       invalidWorkspaceEscalation: '请选择人工审批或模型审查。',
       pendingLoad: '请等待设置读取完成。',
       usageTitle: '审查用量', usageScope: '仅统计本次服务运行，服务重启后归零。打开页面时读取一次；可手动刷新查看最新计数。',
@@ -108,6 +124,8 @@ window.__ModuleLoader__.load({
       const errors = {};
       if (typeof draft.preciseDeletion !== 'boolean') errors.preciseDeletion = 'invalidBoolean';
       if (!['ask', 'review'].includes(draft.workspaceEscalation)) errors.workspaceEscalation = 'invalidWorkspaceEscalation';
+      if (!['deny', 'ask'].includes(draft.denialPolicy)) errors.denialPolicy = 'invalidDecisionPolicy';
+      if (!['inherit', 'deny'].includes(draft.subagentApproval)) errors.subagentApproval = 'invalidSubagentApproval';
       if (draft.routeMode === 'specific' && !choices.some(choice => choice.provider === draft.provider && choice.model.id === draft.model)) errors.model = 'modelRequired';
       const picked = choices.find(choice => choice.provider === draft.provider && choice.model.id === draft.model);
       if (draft.reasoningMode === 'specific' && (draft.routeMode !== 'specific' || !picked?.model.reasoning?.efforts?.some(effort => effort.id === draft.reasoningEffort))) errors.reasoningEffort = 'effortMissing';
@@ -154,6 +172,9 @@ window.__ModuleLoader__.load({
 [data-auto-review-settings] .ar-success{color:var(--dsw-alias-state-success-primary);font-size:12px}
 [data-auto-review-settings] .ar-sr{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media(max-width:640px){[data-auto-review-settings] .ar-grid{grid-template-columns:minmax(0,1fr)}}
+.ar-child-approvals{box-sizing:border-box;width:calc(100% - 32px);max-width:var(--dsh-chat-content-width);margin:6px auto;padding:12px;border:1px solid var(--dsw-alias-state-warn-secondary);border-radius:var(--dsw-radius-lg);background:var(--dsw-specific-input-major);color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px}
+.ar-child-approvals h3{font-size:14px;margin:0 0 6px}.ar-child-approvals p{margin:4px 0}.ar-child-approvals .ar-help{color:var(--dsw-alias-label-tertiary);font-size:12px}.ar-child-approvals ol{margin:8px 0 0;padding:0;list-style:none;max-height:340px;overflow-y:auto}.ar-child-approvals li{border-top:1px solid var(--dsw-alias-border-l2);padding:10px 0}.ar-child-approvals code{overflow-wrap:anywhere}.ar-child-approvals summary{cursor:pointer;margin:6px 0}.ar-child-approvals pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto;padding:8px;background:var(--dsw-alias-bg-layer-2);border-radius:var(--dsw-radius-md);font:12px/18px var(--ds-font-family-code,monospace)}
+.ar-child-approvals .ar-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.ar-child-approvals button{font:inherit;padding:5px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);background:var(--dsw-specific-input-major);color:var(--dsw-alias-label-primary);cursor:pointer}.ar-child-approvals .ar-primary{background:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-oncolor)}.ar-child-approvals button:disabled{opacity:.5;cursor:default}.ar-child-approvals button:focus-visible,.ar-child-approvals summary:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}.ar-child-approvals .ar-error{color:var(--dsw-alias-state-error-primary)}
 `;
       document.head.appendChild(style);
       return () => style.remove();
@@ -340,6 +361,12 @@ window.__ModuleLoader__.load({
           'aria-describedby': `ar-preciseDeletion-help${errors.preciseDeletion ? ' ar-preciseDeletion-error' : ''}`,
           onChange: event => update('preciseDeletion', event.target.checked),
         }), t('preciseDeletionHelp'), errors.preciseDeletion, 'ar-preciseDeletion')),
+        h('div', { className: 'ar-card' }, field(t('denialPolicy'), select('denialPolicy', [option('deny', t('deny')), option('ask', t('ask'))], null, {
+          'aria-invalid': errors.denialPolicy ? true : undefined, 'aria-describedby': `ar-denialPolicy-help${errors.denialPolicy ? ' ar-denialPolicy-error' : ''}`,
+        }), t('denialHelp'), errors.denialPolicy, 'ar-denialPolicy')),
+        h('div', { className: 'ar-card' }, field(t('subagentApproval'), select('subagentApproval', [option('inherit', t('subagentInherit')), option('deny', t('subagentDeny'))], null, {
+          'aria-invalid': errors.subagentApproval ? true : undefined, 'aria-describedby': `ar-subagentApproval-help${errors.subagentApproval ? ' ar-subagentApproval-error' : ''}`,
+        }), t('subagentHelp'), errors.subagentApproval, 'ar-subagentApproval')),
         h('div', { className: 'ar-card' }, field(t('failurePolicy'), select('failurePolicy', [option('deny', t('deny')), option('ask', t('ask'))]), t('failureHelp'), null, 'ar-failurePolicy')),
         h('div', { className: 'ar-actions' },
           h('button', { type: 'submit', className: 'ar-primary', disabled: disabled || !dirty || conflict || Object.keys(errors).length > 0 }, t(busy ? 'saving' : 'save')),
@@ -431,10 +458,170 @@ window.__ModuleLoader__.load({
       });
     }
 
+    // Native PendingApproval owns the Remote Event promise and the one-shot answer lock.
+    // Observe every publication synchronously before a later request in the same
+    // Session can cover it. Never replace native pending domains or issue grants by RPC.
+    function approvalRoot(sessionId, list) {
+      const rows = list?.byId ?? {}, seen = new Set();
+      let row = rows[sessionId];
+      if (row?.origin !== 'subagent' || !row.parentId) return undefined;
+      while (row?.origin === 'subagent') {
+        if (!row.parentId || seen.has(row.id)) return undefined;
+        seen.add(row.id); row = rows[row.parentId];
+      }
+      return row?.id;
+    }
+    function createApprovalCollector(sessions, statusSource, readCall) {
+      const entries = new Map(), seen = new WeakSet(), listeners = new Set();
+      let snapshot = [], active = true, order = 0;
+      const publish = () => {
+        if (!active) return;
+        const list = sessions.list.getSnapshot();
+        snapshot = [...entries.values()].filter(entry => entry.request.answerable && approvalRoot(entry.sessionId, list) === entry.rootId)
+          .sort((a, b) => a.order - b.order);
+        for (const listener of listeners) listener();
+      };
+      const remove = request => {
+        const entry = entries.get(request);
+        if (!entry) return;
+        entry.controller?.abort(); entries.delete(request); publish();
+      };
+      const load = async entry => {
+        entry.controller?.abort();
+        const controller = new AbortController(); entry.controller = controller;
+        entry.detail = { status: 'loading' }; publish();
+        try {
+          const call = await readCall(entry, controller.signal);
+          if (!active || controller.signal.aborted || entries.get(entry.request) !== entry) return;
+          entry.detail = call ? { status: 'ready', arguments: call.arguments } : { status: 'missing' };
+        } catch (error) {
+          if (!active || controller.signal.aborted || entries.get(entry.request) !== entry) return;
+          entry.detail = { status: 'error', error: error instanceof Error ? error.message : String(error) };
+        }
+        publish();
+      };
+      const scan = () => {
+        if (!active) return;
+        const list = sessions.list.getSnapshot();
+        for (const [sessionId, status] of statusSource.getSnapshot()) {
+          const request = status.pendingInteraction;
+          if (!request || request.kind !== 'approval' || !request.answerable || typeof request.answer !== 'function' || typeof request.result?.then !== 'function' || seen.has(request)) continue;
+          const row = list.byId[sessionId], rootId = approvalRoot(sessionId, list);
+          const permission = row?.projectionValues?.permissions?.currentValue ?? sessions.binding?.(sessionId)?.session.projections.faceOf('permissions').getSnapshot()?.currentValue;
+          if (!rootId || !isReviewPreset(permission) || request.sessionId !== sessionId) continue;
+          seen.add(request);
+          const entry = { request, rootId, sessionId, order: ++order, key: `${sessionId}:${request.key}:${order}`, detail: { status: request.callId ? 'loading' : 'missing' }, answering: false, error: null };
+          entries.set(request, entry);
+          // Explicit success and rejection handlers avoid an unhandled rejection on cancellation.
+          request.result.then(() => remove(request), () => remove(request));
+          if (request.callId) void load(entry);
+        }
+        publish();
+      };
+      const disposeStatus = statusSource.subscribe(scan), disposeList = sessions.list.subscribe(scan);
+      scan();
+      return {
+        getSnapshot: () => snapshot,
+        subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+        reload(entry) { if (active && entries.get(entry.request) === entry && entry.request.answerable) return load(entry); },
+        async answer(entry, outcome) {
+          if (!active || entries.get(entry.request) !== entry || !entry.request.answerable || entry.answering || !['allowed-once', 'rejected'].includes(outcome)) return false;
+          if (approvalRoot(entry.sessionId, sessions.list.getSnapshot()) !== entry.rootId) return false;
+          // Details must identify the exact original call before the aggregate can grant.
+          if (outcome === 'allowed-once' && entry.detail.status !== 'ready') return false;
+          entry.answering = true; entry.error = null; publish();
+          try { await entry.request.answer(outcome); return true; }
+          catch (error) { if (active && entries.get(entry.request) === entry && entry.request.answerable) { entry.answering = false; entry.error = error instanceof Error ? error.message : String(error); publish(); } return false; }
+        },
+        dispose() {
+          if (!active) return; active = false; disposeStatus(); disposeList();
+          for (const entry of entries.values()) entry.controller?.abort();
+          entries.clear(); snapshot = []; listeners.clear();
+          // Native child presentations and their approvals remain owned by ui-approval.
+        },
+      };
+    }
+    async function readApprovalCall(ctx, entry, signal) {
+      const snapshot = ctx.sessions.binding(entry.sessionId)?.session.getSnapshot();
+      const address = snapshot?.subagent?.address;
+      if (snapshot?.sessionId !== entry.sessionId || !address || address.childSessionId !== entry.sessionId) return undefined;
+      const page = await ctx.remote.session.events({ address: { kind: 'subagent', ...address }, maxMessages: 200 }, signal);
+      let step, calls = new Map();
+      for (const { event } of page.records) {
+        const data = event?.data;
+        if (event?.type === 'turn/start' || event?.type === 'turn/end' || event?.type === 'step/end') {
+          step = undefined; calls = new Map(); continue;
+        }
+        if (event?.type === 'step/start') {
+          step = data; calls = new Map(); continue;
+        }
+        if (!step) continue;
+        if (event.type === 'tool/call' && data.turn === step.turn && data.step === step.step) {
+          // Duplicate call identities cannot supply approval evidence.
+          calls.set(data.callId, calls.has(data.callId) ? null : { ...data, rootCallId: data.callId });
+        } else if (event.type === 'tool/ptc-dispatch-start') {
+          // PTC has no ordinary tool/call event or explicit turn/step fields.
+          // Its earlier parent must belong to this exact open step and chain root.
+          const parent = calls.get(data.parentCallId);
+          const validParent = parent?.name === 'run_code' && parent.rootCallId === data.rootCallId;
+          const unique = !calls.has(data.subCallId) && data.subCallId !== data.parentCallId;
+          const argumentsText = data.arguments === undefined ? undefined : JSON.stringify(data.arguments);
+          calls.set(data.subCallId, validParent && unique && typeof argumentsText === 'string'
+            ? { ...data, callId: data.subCallId, arguments: argumentsText } : null);
+        } else if (event.type === 'tool/result') {
+          if (calls.has(data.message?.toolCallId)) calls.set(data.message.toolCallId, null);
+        } else if (event.type === 'tool/ptc-dispatch') {
+          if (calls.has(data.subCallId)) calls.set(data.subCallId, null);
+        }
+      }
+      const call = calls.get(entry.request.callId);
+      return call?.name === entry.request.toolName && typeof call.arguments === 'string' ? call : undefined;
+    }
+    function ChildApprovalItem({ entry, collector, sessions, t, resolveReason }) {
+      const row = sessions.list.getSnapshot().byId[entry.sessionId];
+      const request = entry.request, disabled = entry.answering || !request.answerable;
+      const reason = request.displayReason ? resolveReason(request.displayReason) : request.reason;
+      return h('li', { 'data-child-approval-key': entry.key, 'aria-busy': entry.answering },
+        h('strong', null, row?.displayTitle ?? entry.sessionId), ' · ', h('code', null, request.toolName),
+        h('p', { className: 'ar-help' }, h('code', null, entry.sessionId), request.callId ? ` · ${request.callId}` : ''),
+        h('details', { open: true }, h('summary', null, t('childApprovalDetails')),
+          reason ? h(React.Fragment, null, h('p', null, t('childApprovalReason')), h('pre', null, reason)) : null,
+          entry.detail.status === 'ready' ? h(React.Fragment, null, h('p', null, t('childApprovalArguments')), h('pre', null, entry.detail.arguments)) : h('p', { className: 'ar-help', role: entry.detail.status === 'loading' ? 'status' : undefined }, t(!request.callId ? 'childApprovalNoCall' : entry.detail.status === 'loading' ? 'childApprovalLoading' : 'childApprovalMissing')),
+          entry.detail.error ? h('p', { className: 'ar-error' }, entry.detail.error) : null),
+        entry.error ? h('p', { className: 'ar-error', role: 'alert' }, `${t('childApprovalFailed')} ${entry.error}`) : null,
+        h('div', { className: 'ar-actions' },
+          h('button', { type: 'button', disabled, onClick: () => void collector.answer(entry, 'rejected') }, t('childApprovalReject')),
+          h('button', { type: 'button', className: 'ar-primary', disabled: disabled || entry.detail.status !== 'ready', onClick: () => void collector.answer(entry, 'allowed-once') }, t('childApprovalAllow')),
+          request.callId && ['missing', 'error'].includes(entry.detail.status) ? h('button', { type: 'button', disabled, onClick: () => void collector.reload(entry) }, t('childApprovalRetry')) : null));
+    }
+    function ChildApprovalSummary({ collector, sessions, sessionId, t, resolveReason }) {
+      const entries = useSyncExternalStore(collector.subscribe, collector.getSnapshot);
+      const list = useSyncExternalStore(listener => sessions.list.subscribe(listener), () => sessions.list.getSnapshot());
+      // Root views only; unrelated roots never receive another tree's pending requests.
+      if (list.byId[sessionId]?.origin === 'subagent') return null;
+      const matching = entries.filter(entry => entry.rootId === sessionId);
+      if (!matching.length) return null;
+      return h('section', { className: 'ar-child-approvals', 'aria-label': t('childApprovals', { count: matching.length }) },
+        h('h3', { 'aria-live': 'polite' }, t('childApprovals', { count: matching.length })),
+        h('p', { className: 'ar-help' }, t('childApprovalsHelp')),
+        h('ol', null, matching.map(entry => h(ChildApprovalItem, { key: entry.key, entry, collector, sessions, t, resolveReason }))));
+    }
+    function registerChildApprovals(ctx) {
+      return ctx.inject(['sessions', 'uiSession', 'remote'], scope => scope.effect(() => {
+        const collector = createApprovalCollector(scope.sessions, scope.uiSession.sessionStatus, (entry, signal) => readApprovalCall(scope, entry, signal));
+        const disposeSlot = scope.slots.inject('conversation.composer.dock', () => scope.slots.register({
+          name: 'conversation.composer.dock', id: 'auto-review-child-approvals', order: -100, locale: NS,
+          inject: () => ({ collector, sessions: scope.sessions, resolveReason: reason => scope.locale.resolveText(reason) }),
+        }, ChildApprovalSummary));
+        return () => { disposeSlot(); collector.dispose(); };
+      }, 'auto-review-desktop: native child approval summary'));
+    }
+
     function apply(ctx) {
       ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'auto-review-desktop: settings copy');
       ctx.effect(() => installStyles(), 'auto-review-desktop: settings styles');
       ctx.effect(() => registerPermissionPresentation(ctx), 'auto-review-desktop: permission presentation');
+      if (typeof ctx.inject === 'function') ctx.effect(() => registerChildApprovals(ctx), 'auto-review-desktop: child approval presentation');
       const t = ctx.locale.bind(NS);
       ctx.effect(() => ctx.configForms.whileServed(['auto-review-desktop'], () => ctx.slots.inject('settings.section', () => ctx.slots.register({
         name: 'settings.section', id: 'auto-review-desktop', order: 12, label: () => t('nav'), locale: NS,
@@ -448,6 +635,7 @@ window.__ModuleLoader__.load({
       // Pure helpers and the components are exported for offline contract tests.
       SettingsSection, UsageCard, draftOf, sameDraft, modelChoices, validateDraft,
       localizePermissionCatalog, decoratePermissionTree, registerPermissionPresentation, permissionDictionaries: { en, zh },
+      createApprovalCollector, approvalRoot, readApprovalCall, ChildApprovalSummary, ChildApprovalItem, registerChildApprovals,
     };
   },
 });

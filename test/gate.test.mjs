@@ -18,8 +18,15 @@ test('specific configured model disappearing never silently falls back',async()=
   const f=fixture({config:{routeMode:'specific',provider:'review',model:'gone'}});const gate=gateFor(f);
   assert.equal((await gate.gate(f.exec,f.next)).kind,'deny');assert.equal(f.requests.length,0);assert.equal(f.getDownstreamCalls(),0);
 });
-test('deny asks human; never stays final',async()=>{
-  const f=fixture({stream:()=>answer('{"risk":"medium","decision":"deny","reason":"No exact authorization"}')});const gate=gateFor(f);
+test('reviewer denial is final by default and requires explicit human fallback',async()=>{
+  const f=fixture({stream:()=>answer('{"risk":"medium","decision":"deny","reason":"No exact authorization"}')});
+  assert.equal((await gateFor(f).gate(f.exec,f.next)).kind,'deny');
+  assert.equal(f.getDownstreamCalls(),0);
+  assert.equal(normalizeConfig().denialPolicy,'deny');
+  assert.equal(normalizeConfig().subagentApproval,'inherit');
+});
+test('explicit denial fallback asks human; never stays final',async()=>{
+  const f=fixture({config:{denialPolicy:'ask'},stream:()=>answer('{"risk":"medium","decision":"deny","reason":"No exact authorization"}')});const gate=gateFor(f);
   assert.equal((await gate.gate(f.exec,f.next)).kind,'ask');f.setPolicy('never');
   assert.equal((await gate.gate(f.exec,f.next)).kind,'deny');assert.equal(f.getDownstreamCalls(),1);
 });
@@ -86,6 +93,12 @@ test('hot unload downgrades active Auto sessions and cancels pending work',async
   let release;const pending=new Promise(resolve=>{release=resolve;});const f=fixture({stream:async function*(){await pending;yield* answer();}});const gate=gateFor(f);
   const work=gate.gate(f.exec,f.next);await new Promise(resolve=>setImmediate(resolve));await gate.close();
   assert.equal((await work).kind,'cancel');assert.equal(f.getPreset(),'workspace-write');assert.equal(f.getDownstreamCalls(),0);release();
+});
+test('hot unload cancels native enhanced turns before dropping their reviewer',async()=>{
+  const f=fixture();let cancelled=0;
+  f.ctx.agents={get:id=>id===f.session.id?{cancel(cause){assert.equal(cause.kind,'hook');cancelled++;f.controller.abort();}}:undefined};
+  await gateFor(f).close();assert.equal(cancelled,1);assert(f.controller.signal.aborted);
+  assert.equal(f.events.findLast(event=>event.type==='sandbox/mode').data.mode,'workspace-write');
 });
 test('application shutdown preserves persisted selection',async()=>{
   const f=fixture();await gateFor(f).close({applicationShutdown:true});assert.equal(f.getPreset(),'auto-review-desktop');

@@ -28,8 +28,8 @@ main_path = OUT / f"{pkg['name']}-{pkg['version']}.tgz"
 if main_path.exists():
     main_path = OUT / f"{pkg['name']}-{pkg['version']}-local.tgz"
 main = pack(ROOT, main_path, files)
-source_roots = ['src', 'vendor', 'test', 'scripts']
-source_files = [ROOT / name for name in ['package.json', 'README.zh.md', 'DEVELOPMENT.zh.md', 'NOTICE.md', 'cordis.patch.yml']]
+source_roots = ['src', 'vendor', 'test', 'scripts', 'locale']
+source_files = [ROOT / 'icon.svg'] + [ROOT / name for name in ['package.json', 'README.zh.md', 'DEVELOPMENT.zh.md', 'NOTICE.md', 'cordis.patch.yml']]
 source_files += [ROOT / '.gitignore', ROOT / '.gitattributes', ROOT / 'LICENSE']
 for name in source_roots:
     source_files.extend(p for p in (ROOT / name).rglob('*') if p.is_file())

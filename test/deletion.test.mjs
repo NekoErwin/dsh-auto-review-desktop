@@ -56,7 +56,7 @@ test('ordinary calls do not receive extra tool result context',async()=>{
 });
 
 test('unverified deletion has explicit empty evidence and a reviewer denial can require a check',async()=>{
-  const f=deletionFixture();f.setStream(()=>answer('{"risk":"medium","decision":"deny","reason":"Read-only inspection of resolved target and contents is missing"}'));
+  const f=deletionFixture();f.setConfig({denialPolicy:'ask'});f.setStream(()=>answer('{"risk":"medium","decision":"deny","reason":"Read-only inspection of resolved target and contents is missing"}'));
   const evidence=deletionEvidenceMessage(f.session,f.exec);
   assert.equal(JSON.parse(evidence.content[0].text.split('\n').slice(1).join('\n')).records.length,0);
   assert.equal((await createReviewGate(f.ctx,f.readConfig).gate(f.exec,f.next)).kind,'ask');

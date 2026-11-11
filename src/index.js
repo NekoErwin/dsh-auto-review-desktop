@@ -3,9 +3,11 @@ import { createReviewGate } from './gate.js';
 import { DEFAULTS, normalizeConfig, ReviewStats } from './runtime.js';
 import { createAuditJournal } from './audit.js';
 import { registerDesktopPreset } from './preset.js';
+import { createDelegationPolicy } from './delegation.js';
+import { createHumanApprovalGuard } from './human-approval.js';
 
 export const name='auto-review-desktop';
-export const inject=['approval','llm','permissionPresets','sessions','tools','workingDirectory','commands','settings','connection','webServer','sandboxPolicy','fs','shell'];
+export const inject=['approval','llm','permissionPresets','sessions','tools','workingDirectory','commands','settings','connection','webServer','sandboxPolicy','fs','shell','agents'];
 // One atomic volatile object: model/provider and policy changes never leave mixed live settings.
 export const Config=Schema.object({
   routeMode:Schema.union(['follow','specific']).default(DEFAULTS.routeMode),
@@ -20,6 +22,8 @@ export const Config=Schema.object({
   preciseDeletion:Schema.boolean().default(DEFAULTS.preciseDeletion),
   workspaceEscalation:Schema.union(['ask','review']).default(DEFAULTS.workspaceEscalation),
   failurePolicy:Schema.union(['deny','ask']).default(DEFAULTS.failurePolicy),
+  denialPolicy:Schema.union(['deny','ask']).default(DEFAULTS.denialPolicy),
+  subagentApproval:Schema.union(['inherit','deny']).default(DEFAULTS.subagentApproval),
 }).volatile();
 
 export function apply(ctx,config) {
@@ -28,13 +32,18 @@ export function apply(ctx,config) {
   const journal=createAuditJournal(ctx.get('profileContext')?.dir,ctx.logger);
   const stats=new ReviewStats(event=>journal.write(event));
   const runtime=createReviewGate(ctx,readConfig,{stats});
+  const delegation=createDelegationPolicy(ctx,readConfig);
+  const human=createHumanApprovalGuard(ctx,readConfig);
   ctx.provide('autoReviewDesktop',runtime);
   ctx.effect(()=>ctx.settings.configure({auto:false}),'auto-review-desktop settings');
-  ctx.effect(()=>ctx.connection.register(ctx,'/auto-review-desktop',async(endpoint,_payload,_signal,peer)=>{
+  const statusHandler=async(endpoint,_payload,_signal,peer)=>{
     if(peer?.principal?.kind!=='owner')return {ok:false,error:{code:'FORBIDDEN',message:'Owner access required'}};
     if(endpoint!=='status')return {ok:false,error:{code:'NOT_FOUND',message:'Unknown review endpoint'}};
     return {ok:true,value:{totals:stats.view().totals,usageCoverage:stats.view().usageCoverage,running:runtime.accepting,scope:'process',audit:journal.available?'available':'unavailable'}};
-  }),'auto-review-desktop status RPC');
+  };
+  // Explicit caller ownership is required by Desktop 0.2.2-rc.1: its rpc
+  // getter can retain the service context without the caller's webServer inject.
+  ctx.effect(()=>ctx.connection.register(ctx,'/auto-review-desktop',statusHandler),'auto-review-desktop status RPC');
   ctx.commands.register({
     name:'auto-review-status',description:'Show review configuration, session attempt budget and actual reported usage',
     handler:invocation=>({kind:'success',text:JSON.stringify({config:readConfig(),
@@ -42,12 +51,14 @@ export function apply(ctx,config) {
       ...stats.view()},null,2)}),
   });
   ctx.effect(function*(){
-    yield ctx.on('tools/pre-execute',(exec,next)=>runtime.gate(exec,next),{prepend:true});
-    yield ctx.on('tools/execute',(exec,next)=>runtime.execute(exec,next),{prepend:true});
-    yield ctx.on('approval/request',(request,next)=>runtime.approval(request,next),{prepend:true});
-    yield ctx.on('tools/result',exec=>{runtime.release(exec);});
+    yield ctx.on('agent/created',payload=>delegation.created(payload));
+    yield ctx.on('tools/pre-execute',(exec,next)=>human.prepare(exec,()=>runtime.gate(exec,next)),{prepend:true});
+    yield ctx.on('tools/execute',(exec,next)=>delegation.execute(exec,()=>human.execute(exec,()=>runtime.execute(exec,next))));
+    yield ctx.on('approval/request',(request,next)=>runtime.approval(request,()=>human.approval(request,next)),{prepend:true});
+    yield ctx.on('tools/result',exec=>{runtime.release(exec);human.release(exec);});
     yield registerDesktopPreset(ctx.permissionPresets);
     yield async()=>{
+      human.close();delegation.close();
       try {await runtime.close({applicationShutdown:ctx.root.fiber.state!==2});}
       finally {await journal.close();}
     };
