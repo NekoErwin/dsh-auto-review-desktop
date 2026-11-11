@@ -74,8 +74,12 @@ export function createWorkspaceRouter(ctx,readConfig,review,isAccepting) {
           if(!bypass)return deny('This file operation targets outside the workspace. Retry this exact operation once with sandbox_permissions="danger-full-access" and a justification; the configured outside-workspace policy decides that request.');
         }
       } else if(trusted(exec) && READS.has(exec.name)) {
+        // Native readers cannot mutate files or spawn commands. Workspace-write
+        // constrains writes; do not add a separate read boundary by default.
+        // This never bypasses native OS permissions or downstream tool guards.
         const path=(exec.name==='glob'||exec.name==='grep')?(args.path??cwd):args.file_path;
-        bypass=await contained(exec,path);if(bypass)checks=[path];
+        bypass=config.workspaceReads==='allow' || await contained(exec,path);
+        if(bypass && config.workspaceReads==='approve')checks=[path];
       } else if(trusted(exec) && exec.name==='working_directory') {
         bypass=args.cd===undefined || await contained(exec,args.cd);if(bypass && args.cd!==undefined)checks=[args.cd];
       }
@@ -101,12 +105,13 @@ export function createWorkspaceRouter(ctx,readConfig,review,isAccepting) {
     admitted.delete(exec.token);
     if(!ticket && (!exec.agent || desktopMode(exec.agent.session)!=='workspace'))return next();
     if(ticket) {
+      const pathsUnchanged=ticket.checks.length===0 || (await Promise.all(ticket.checks.map(path=>contained(exec,path)))).every(Boolean);
       const cwd=await ctx.workingDirectory.ensure(exec.agent,exec.signal);
       const current=snapshotReview(ctx,exec.agent,exec,cwd,new Map());
-      if(!isAccepting() || exec.signal.aborted || desktopMode(exec.agent.session)!==ticket.mode
+      // Finish all owned awaits before the final synchronous admission check.
+      if(!pathsUnchanged || !isAccepting() || exec.signal.aborted || desktopMode(exec.agent.session)!==ticket.mode
         || configKey(normalizeConfig(readConfig()))!==ticket.config || actionKey(exec)!==ticket.action
-        || authorizationKey(current)!==ticket.authority || (ticket.fastPath && !trusted(exec))
-        || !(await Promise.all(ticket.checks.map(path=>contained(exec,path)))).every(Boolean)) {
+        || authorizationKey(current)!==ticket.authority || (ticket.fastPath && !trusted(exec))) {
         throw new Error('auto-review-desktop: workspace admission changed before execution; no operation was authorized');
       }
     }

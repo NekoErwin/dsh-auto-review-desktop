@@ -188,3 +188,126 @@ test('denial fallback and child human approval settings have independent strict 
     assert.ok(plugin.permissionDictionaries[language].childApprovalsHelp);
   }
 });
+
+
+test('root approval details use a session address and preserve full native and PTC arguments', async () => {
+  const plugin = pluginOf(), ev = (type, data) => ({ event: { type, data } });
+  const large = 'complete content\n'.repeat(1000);
+  let records = [ev('step/start', { turn: 5, step: 1 }), ev('tool/call', { turn: 5, step: 1, callId: 'write-1', name: 'write', arguments: JSON.stringify({ file_path: 'C:\\outside\\exact.txt', content: large }) })];
+  let address;
+  const ctx = { sessions: { binding: () => ({ session: { getSnapshot: () => ({ sessionId: 'root', subagent: null }) } }) }, remote: { session: { events: async request => { address = request.address; return { records }; } } } };
+  const entry = { sessionId: 'root', request: { callId: 'write-1', toolName: 'write', answerable: true } };
+  const result = await plugin.readApprovalCall(ctx, entry);
+  assert.equal(address.kind, 'session'); assert.equal(address.sessionId, 'root');
+  assert.equal(JSON.parse(result.arguments).content, large);
+  records = [ev('step/start', { turn: 5, step: 2 }), ev('tool/call', { turn: 5, step: 2, callId: 'transport', name: 'run_code', arguments: '{}' }), ev('tool/ptc-dispatch-start', { rootCallId: 'transport', parentCallId: 'transport', subCallId: 'inner', name: 'edit', arguments: { file_path: 'exact.txt', old_string: large, new_string: 'replacement' } })];
+  const inner = await plugin.readApprovalCall(ctx, { sessionId: 'root', request: { callId: 'inner', toolName: 'edit', answerable: true } });
+  assert.equal(JSON.parse(inner.arguments).old_string, large);
+  assert.equal(await plugin.readApprovalCall(ctx, { sessionId: 'wrong-root', request: entry.request }), undefined);
+});
+
+test('native detail rendering shows complete identity and arguments without repeating the native reason or buttons', () => {
+  const plugin = pluginOf();
+  const nodes = root => root && typeof root === 'object' ? [root, ...(root.props?.children ?? []).flatMap(nodes)] : [];
+  const text = root => typeof root === 'string' ? root : root?.props ? root.props.children.map(text).join(' ') : '';
+  for (const reason of ['Outside workspace', 'Reviewer denied exact action', 'Review could not complete', 'Native escalation']) {
+    const request = { toolName: 'write', callId: 'exact-call', reason };
+    const tree = plugin.ApprovalDetailBody({ request, detail: { status: 'ready', call: { arguments: '{"file_path":"exact.txt","content":"all content"}' } }, t: key => key, resolveReason: value => value.en });
+    assert(text(tree).includes('exact-call')); assert(text(tree).includes('write')); assert(!text(tree).includes(reason)); assert(text(tree).includes('all content'));
+    assert.equal(nodes(tree).filter(node => node.type === 'button').length, 0);
+  }
+  const failed = plugin.ApprovalDetailBody({ request: { toolName: 'pwsh', callId: 'missing' }, detail: { status: 'missing' }, t: key => key, resolveReason: () => '', retry() {} });
+  assert(text(failed).includes('approvalMissing'));
+  assert.deepEqual(nodes(failed).filter(node => node.type === 'button').map(node => text(node)), ['childApprovalRetry']);
+});
+
+test('detail request cancellation and unmount reject late results without touching native answers', async () => {
+  const plugin = pluginOf();
+  for (const end of ['cancel', 'unmount', 'answer']) {
+    let finish, seenSignal; const updates = [];
+    const controller = new AbortController();
+    const request = new NativePending('root', { toolName: 'write', callId: 'call', signal: controller.signal });
+    request.result.catch(() => {});
+    const ctx = { sessions: { binding: () => ({ session: { getSnapshot: () => ({ sessionId: 'root', subagent: null }) } }) }, remote: { session: { events: async (_request, signal) => { seenSignal = signal; return await new Promise(resolve => { finish = resolve; }); } } } };
+    const dispose = plugin.loadApprovalDetail(ctx, { sessionId: 'root', request }, value => updates.push(value));
+    await flush();
+    if (end === 'cancel') controller.abort();
+    if (end === 'unmount') dispose();
+    if (end === 'answer') await request.answer('rejected');
+    await flush();
+    assert(seenSignal.aborted);
+    finish({ records: [{ event: { type: 'step/start', data: { turn: 1, step: 1 } } }, { event: { type: 'tool/call', data: { turn: 1, step: 1, callId: 'call', name: 'write', arguments: '{"content":"late-secret"}' } } }] });
+    await flush(); await flush();
+    assert(!updates.some(value => value.status === 'ready'));
+    if (end === 'unmount') { assert(request.answerable); await request.answer('rejected'); }
+    else assert.equal(updates.at(-1).status, 'withdrawn');
+    dispose();
+  }
+});
+
+test('detail load failures are explicit and disposed previous requests cannot replace newer details', async () => {
+  const plugin = pluginOf(), states = [];
+  const make = id => new NativePending('root', { toolName: 'write', callId: id });
+  const a = make('a'), b = make('b'); let finishA;
+  const ctx = { sessions: { binding: () => ({ session: { getSnapshot: () => ({ sessionId: 'root', subagent: null }) } }) }, remote: { session: { events: async () => await new Promise(resolve => { finishA = resolve; }) } } };
+  const removeA = plugin.loadApprovalDetail(ctx, { sessionId: 'root', request: a }, value => states.push(value));
+  await flush(); removeA();
+  ctx.remote.session.events = async () => { throw new Error('History unavailable'); };
+  const removeB = plugin.loadApprovalDetail(ctx, { sessionId: 'root', request: b }, value => states.push(value));
+  await flush(); await flush();
+  assert.equal(states.at(-1).request, b); assert.equal(states.at(-1).status, 'error'); assert(states.at(-1).error.includes('History unavailable'));
+  finishA({ records: [] }); await flush(); await flush();
+  assert.equal(states.at(-1).request, b);
+  removeB(); await a.answer('rejected'); await b.answer('rejected');
+});
+
+test('native read-only settings strictly default to all native paths and retain an outside-approval preference', () => {
+  const plugin = pluginOf(), draft = plugin.draftOf();
+  assert.equal(draft.workspaceReads, 'allow');
+  assert.equal(plugin.draftOf({ workspaceReads: 'approve' }).workspaceReads, 'approve');
+  assert.equal(plugin.validateDraft({ ...draft, workspaceReads: 'deny' }, []).workspaceReads, 'invalidWorkspaceReads');
+  assert.equal(plugin.validateDraft({ ...draft, workspaceReads: 'approve' }, []).workspaceReads, undefined);
+  for (const lang of ['en', 'zh']) {
+    const copy = plugin.permissionDictionaries[lang];
+    for (const tool of ['read', 'read_image', 'glob', 'grep', 'MCP']) assert(copy.workspaceReadsHelp.includes(tool));
+    assert(copy.workspaceReadsAllow); assert(copy.workspaceReadsApprove);
+  }
+});
+
+
+test('native detail slot enhances exact selected requests and preserves shipped fallback and disposal', async () => {
+  const plugin = pluginOf(), statuses = store(new Map()), list = store({ byId: { root: { projectionValues: { permissions: { currentValue: 'auto-review-workspace' } } } } });
+  const native = () => 'shipped command';
+  const shipped = { component: native, options: { priority: 0 } };
+  const entries = [shipped], listeners = new Set(); let registration, slotDisposed = false;
+  const emit = () => { for (const listener of listeners) listener(); };
+  const ctx = {
+    inject(_names, callback) { return callback(this); },
+    sessions: { list, binding: () => ({ session: { getSnapshot: () => ({ sessionId: 'root', subagent: null }) } }) },
+    uiSession: { sessionStatus: statuses }, remote: { session: { events: async () => ({ records: [] }) } },
+    locale: { bind: () => key => key, resolveText: value => value.en },
+    slots: {
+      inject(name, callback) { assert.equal(name, 'conversation.approval.detail'); return callback(); },
+      entries: () => entries,
+      subscribe(_name, callback) { listeners.add(callback); return () => listeners.delete(callback); },
+      register(options, component) {
+        registration = { options, component }; entries.push(registration); emit();
+        return () => { entries.splice(entries.indexOf(registration), 1); slotDisposed = true; emit(); };
+      },
+    },
+  };
+  const dispose = plugin.registerApprovalDetails(ctx);
+  assert.equal(registration.options.priority, -1);
+  const request = new NativePending('root', { toolName: 'write', callId: 'exact', reason: 'outside request' });
+  statuses.set(new Map([['root', { pendingInteraction: request }]]));
+  const enhanced = registration.component({ sessionId: 'root', callId: 'exact' });
+  assert.equal(enhanced.type, plugin.NativeApprovalDetail); assert.equal(enhanced.props.request, request);
+  assert.equal(registration.component({ sessionId: 'root', callId: 'other' }).type, native);
+  assert.equal(registration.component({ sessionId: 'other', callId: 'exact' }).type, native);
+  list.set({ byId: { root: { projectionValues: { permissions: { currentValue: 'workspace-write' } } } } });
+  assert.equal(registration.component({ sessionId: 'root', callId: 'exact' }).type, native);
+  list.set({ byId: { root: { projectionValues: { permissions: { currentValue: 'auto-review-desktop' } } } } });
+  assert.equal(registration.component({ sessionId: 'root', callId: 'exact' }).type, plugin.NativeApprovalDetail);
+  dispose(); assert(slotDisposed); assert.equal(entries.length, 1); assert.equal(listeners.size, 0);
+  assert(request.answerable); await request.answer('rejected');
+});

@@ -11,6 +11,7 @@ import { WORKSPACE_PRESET, DESKTOP_PRESET, desktopMode, registerDesktopPreset } 
 import { nativeCompatible } from '../src/native-compatibility.js';
 import { normalizeConfig } from '../src/runtime.js';
 import { fixture, answer } from './helpers.mjs';
+import { createHumanApprovalGuard } from '../src/human-approval.js';
 import { nativeTools } from './native-tools.mjs';
 
 const captured=await nativeTools();after(()=>captured.close());
@@ -68,16 +69,77 @@ test('workspace native file shell read search and cwd operations bypass model wi
   }
 });
 
-test('outward reads searches and cwd changes obey ask or review and keep the original workspace root',async()=>{
+test('native read-only tools outside the workspace are exempt by default but preserve other gates',async()=>{
+  assert.equal(normalizeConfig().workspaceReads,'allow');
+  assert.throws(()=>normalizeConfig({workspaceReads:'any-tool'}));
+  for(const [tool,args] of [['read',{file_path:'..\\private.txt'}],['read_image',{file_path:'C:\\outside\\image.png'}],
+    ['glob',{path:'C:\\outside',pattern:'*'}],['grep',{path:'C:\\outside',pattern:'x'}]]) {
+    const f=workspaceFixture({tool,arguments:args});const runtime=createReviewGate(f.ctx,f.readConfig);
+    assert.equal((await runtime.gate(f.exec,f.next)).kind,'allow',tool);
+    assert.equal(f.requests.length,0,tool);assert.equal(f.getDownstreamCalls(),1,tool);
+    f.setPolicy('never');
+    assert.equal((await runtime.gate(f.exec,async()=>({kind:'ask',reason:'native sensitive path'}))).kind,'ask',tool);
+    assert.equal((await runtime.gate(f.exec,async()=>({kind:'deny',reason:'separate read restriction'}))).kind,'deny',tool);
+    let body=0;assert.equal(await runtime.execute(f.exec,async()=>{body++;return 'read';}),'read');assert.equal(body,1);
+  }
+});
+
+test('read exemptions reject substituted schemas, action/config changes and cancellation at dispatch',async()=>{
+  const f=workspaceFixture({tool:'read',arguments:{file_path:'C:\\outside\\notes.txt'}});
+  f.ctx.tools.get=()=>({...captured.definitions.get('read'),description:'Unknown implementation'});
+  assert.equal((await createReviewGate(f.ctx,f.readConfig).gate(f.exec,f.next)).kind,'ask');
+  for(const change of ['config','action','cancel']) {
+    const g=workspaceFixture({tool:'grep',arguments:{path:'C:\\outside',pattern:'needle'}});
+    const runtime=createReviewGate(g.ctx,g.readConfig);
+    assert.equal((await runtime.gate(g.exec,g.next)).kind,'allow');
+    if(change==='config')g.setConfig({workspaceReads:'approve'});
+    if(change==='action')g.exec.arguments.pattern='changed';
+    if(change==='cancel')g.controller.abort();
+    let body=0;await assert.rejects(runtime.execute(g.exec,async()=>{body++;}));assert.equal(body,0,change);
+  }
+  const full=workspaceFixture({tool:'read',arguments:{file_path:'C:\\outside\\notes.txt'}});
+  full.setPreset(DESKTOP_PRESET);full.add('sandbox/mode',{mode:'danger-full-access'});
+  assert.equal((await createReviewGate(full.ctx,full.readConfig).gate(full.exec,full.next)).kind,'allow');
+  assert.equal(full.requests.length,1,'Full access must still review native reads');
+});
+
+test('settings changed during a dispatch path check cannot use an old workspace ticket',async()=>{
+  const f=workspaceFixture({tool:'read',arguments:{file_path:'notes.txt'},config:{workspaceReads:'approve'}});
+  const runtime=createReviewGate(f.ctx,f.readConfig);
+  assert.equal((await runtime.gate(f.exec,f.next)).kind,'allow');
+  const original=f.ctx.fs.resolve;
+  f.ctx.fs.resolve=async(...args)=>{const path=await original(...args);f.setConfig({workspaceEscalation:'review'});return path;};
+  let body=0;await assert.rejects(runtime.execute(f.exec,async()=>{body++;}));assert.equal(body,0);
+});
+
+test('read dispatch does not yield after its final settings check',async()=>{
+  for(const timing of ['during-resolve','after-dispatch']) {
+    const f=workspaceFixture({tool:'read',arguments:{file_path:'C:\\outside\\notes.txt'}});
+    const runtime=createReviewGate(f.ctx,f.readConfig);
+    assert.equal((await runtime.gate(f.exec,f.next)).kind,'allow');
+    const original=f.ctx.workingDirectory.ensure;
+    f.ctx.workingDirectory.ensure=async(...args)=>{
+      const cwd=await original(...args);
+      queueMicrotask(()=>timing==='during-resolve'?f.setConfig({workspaceReads:'approve'}):queueMicrotask(()=>f.setConfig({workspaceReads:'approve'})));
+      return cwd;
+    };
+    let body=0,observed;
+    const dispatch=runtime.execute(f.exec,async()=>{body++;observed=f.readConfig().workspaceReads;});
+    if(timing==='during-resolve'){await assert.rejects(dispatch);assert.equal(body,0);}
+    else {await dispatch;assert.equal(body,1);assert.equal(observed,'allow');}
+  }
+});
+
+test('outward reads searches and cwd changes obey ask or review with strict reads and keep the original workspace root',async()=>{
   for(const [tool,args] of [['read',{file_path:'..\\private.txt'}],['read_image',{file_path:'C:\\outside\\image.png'}],
     ['glob',{path:'C:\\outside',pattern:'*'}],['grep',{path:'C:\\outside',pattern:'x'}],['working_directory',{cd:'C:\\outside'}],
     ['pwsh',{workdir:'C:\\outside',command:'Get-Date',description:'Test outside cwd'}]]) {
-    const f=workspaceFixture({tool,arguments:args});const runtime=createReviewGate(f.ctx,f.readConfig);
+    const f=workspaceFixture({tool,arguments:args,config:{workspaceReads:'approve'}});const runtime=createReviewGate(f.ctx,f.readConfig);
     assert.equal((await runtime.gate(f.exec,f.next)).kind,'ask',tool);assert.equal(f.requests.length,0);
     f.setConfig({workspaceEscalation:'review'});assert.equal((await runtime.gate(f.exec,f.next)).kind,'allow',tool);assert.equal(f.requests.length,1);
     f.setPolicy('never');f.setConfig({workspaceEscalation:'ask'});assert.equal((await runtime.gate(f.exec,f.next)).kind,'deny');
   }
-  const f=workspaceFixture({tool:'read',arguments:{file_path:'private.txt'}});f.ctx.workingDirectory.ensure=async()=>'C:\\outside';
+  const f=workspaceFixture({tool:'read',arguments:{file_path:'private.txt'},config:{workspaceReads:'approve'}});f.ctx.workingDirectory.ensure=async()=>'C:\\outside';
   assert.equal((await createReviewGate(f.ctx,f.readConfig).gate(f.exec,f.next)).kind,'ask');
 });
 
@@ -106,13 +168,13 @@ test('missing sandbox capabilities and inconsistent logged actions do not silent
 });
 
 test('canonical aliases that resolve outside do not bypass path approval',async()=>{
-  const f=workspaceFixture({tool:'read',arguments:{file_path:'link\\private.txt'}});const resolve=f.ctx.fs.resolve;
+  const f=workspaceFixture({tool:'read',arguments:{file_path:'link\\private.txt'},config:{workspaceReads:'approve'}});const resolve=f.ctx.fs.resolve;
   f.ctx.fs.resolve=(path,options)=>resolve(path==='link\\private.txt'?'C:\\outside\\private.txt':path,options);
   assert.equal((await createReviewGate(f.ctx,f.readConfig).gate(f.exec,f.next)).kind,'ask');
 });
 
 test('queued path aliases are resolved again before an exempt read executes',async()=>{
-  const f=workspaceFixture({tool:'read',arguments:{file_path:'link\\private.txt'}});const runtime=createReviewGate(f.ctx,f.readConfig);
+  const f=workspaceFixture({tool:'read',arguments:{file_path:'link\\private.txt'},config:{workspaceReads:'approve'}});const runtime=createReviewGate(f.ctx,f.readConfig);
   assert.equal((await runtime.gate(f.exec,f.next)).kind,'allow');
   const original=f.ctx.fs.resolve;f.ctx.fs.resolve=(path,options)=>original(path==='link\\private.txt'?'C:\\outside\\private.txt':path,options);
   let body=0;await assert.rejects(runtime.execute(f.exec,async()=>{body++;}));assert.equal(body,0);
@@ -242,6 +304,19 @@ test('real native filesystem confines writes and a reviewed grant changes only o
   assert.equal(await readFile(outside,'utf8'),'approved once');assert.equal(human,0);assert.equal(f.requests.length,1);
   assert.equal(desktopMode(f.session),'workspace');assert.equal(policy.resolve().mode,'workspace-write');
   assert.equal(f.events.findLast(e=>e.type==='approval/decided').data.outcome,'allowed-once');
+  const reader=real.definitions.get('read');f.header.tools.push(schema(reader));
+  const readArgs={file_path:outside,offset:1,limit:10};const readId='read-outside';
+  const readRaw=JSON.stringify(readArgs);
+  f.add('assistant/message',{turn:1,step:1,message:{role:'assistant',content:[{type:'tool-call',id:readId,name:'read',arguments:readRaw}]}},true);
+  f.add('tool/call',{turn:1,step:1,callId:readId,name:'read',arguments:readRaw});
+  const readExec={...f.exec,name:'read',callId:readId,rootCallId:readId,arguments:readArgs,token:Symbol('outside-read')};
+  const humanGuard=createHumanApprovalGuard(f.ctx,f.readConfig);
+  assert.equal((await humanGuard.prepare(readExec,()=>runtime.gate(readExec,f.next))).kind,'allow');
+  const readResult=await humanGuard.execute(readExec,()=>runtime.execute(readExec,()=>reader.execute(readArgs,readExec)));
+  assert(JSON.stringify(readResult).includes('approved once'));
+  assert.equal(f.requests.length,1,'Outside read must not create a second review');assert.equal(human,0);
+  assert.equal(f.events.filter(event=>event.type==='approval/asked').length,1,'Only the earlier write required escalation');
+  humanGuard.close();
   await assert.rejects(definition.execute({file_path:outside,content:'second unapproved write'},f.exec),/sandbox|denied/i);
   assert.equal(await readFile(outside,'utf8'),'approved once');
 });

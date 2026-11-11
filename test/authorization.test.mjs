@@ -47,6 +47,27 @@ test('subagent human policy is independent of automatic review',async()=> {
   assert.equal((await gate.gate(child.exec,child.next)).kind,'deny');
 });
 
+test('every enhanced pre-execution human fallback carries an exact action summary and its original reason',async()=> {
+  for(const branch of ['workspace','denial','failure']) {
+    const args={file_path:'C:\\outside\\target.txt',content:'unique-content-'+('x'.repeat(12000))};
+    const f=fixture({tool:'write',arguments:args,config:{denialPolicy:'ask',failurePolicy:'ask'}});
+    if(branch==='workspace'){f.setPreset('auto-review-workspace');f.add('sandbox/mode',{mode:'workspace-write'});}
+    if(branch==='denial')f.setStream(()=>answer('{"risk":"medium","decision":"deny","reason":"Confirm this exact target"}'));
+    if(branch==='failure')f.setStream(async function*(){throw Error('model offline');});
+    const runtime=createReviewGate(f.ctx,f.readConfig);const guard=createHumanApprovalGuard(f.ctx,f.readConfig);
+    const decision=await guard.prepare(f.exec,()=>runtime.gate(f.exec,f.next));
+    assert.equal(decision.kind,'ask',branch);
+    for(const locale of ['en','zh']) {
+      assert(decision.displayReason[locale].includes(f.exec.name),branch);
+      assert(decision.displayReason[locale].includes(f.exec.callId),branch);
+      assert(decision.displayReason[locale].includes(args.file_path),branch+' exact target');
+      assert(!decision.displayReason[locale].includes(args.content),branch+' contents belong in the detail area');
+    }
+    assert(!decision.reason.includes(args.content),'Do not duplicate full parameters into durable approval reason');
+    guard.close();runtime.close();
+  }
+});
+
 test('human approval uses the exact native request and never approves a sibling',async()=> {
   const f=fixture();const guard=createHumanApprovalGuard(f.ctx,f.readConfig);
   await guard.prepare(f.exec,async()=>({kind:'ask'}));

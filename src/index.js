@@ -21,6 +21,7 @@ export const Config=Schema.object({
   maxRetries:Schema.union([0,1]).default(DEFAULTS.maxRetries),
   preciseDeletion:Schema.boolean().default(DEFAULTS.preciseDeletion),
   workspaceEscalation:Schema.union(['ask','review']).default(DEFAULTS.workspaceEscalation),
+  workspaceReads:Schema.union(['allow','approve']).default(DEFAULTS.workspaceReads),
   failurePolicy:Schema.union(['deny','ask']).default(DEFAULTS.failurePolicy),
   denialPolicy:Schema.union(['deny','ask']).default(DEFAULTS.denialPolicy),
   subagentApproval:Schema.union(['inherit','deny']).default(DEFAULTS.subagentApproval),

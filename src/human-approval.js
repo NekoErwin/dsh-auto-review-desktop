@@ -35,7 +35,18 @@ export function createHumanApprovalGuard(ctx,readConfig) {
       if(decision.kind!=='allow' && decision.kind!=='ask'){release(exec);return decision;}
       if(!await fresh(ticket)){release(exec);return {kind:'deny',reason:'Enhanced action changed before admission; retry the exact action.'};}
       ticket.admitted=decision.kind==='allow';
-      return decision;
+      if(decision.kind!=='ask')return decision;
+      // Keep the native headline useful before client detail loads, without
+      // duplicating potentially large file contents in several UI locations.
+      const args=exec.arguments??{};
+      const summary=['file_path','path','cd','workdir','command','justification']
+        .filter(key=>typeof args[key]==='string').map(key=>`${key}: ${args[key]}`).join('\n');
+      const identity=`${exec.name} · ${exec.callId}`;
+      const localized=decision.displayReason??{};
+      const fallback=decision.reason??'Approve this action once.';
+      return {...decision,displayReason:{...localized,
+        en:`${localized.en??fallback}\n\nAction summary: ${identity}${summary?'\n'+summary:''}\nSee action details for the complete parameters.`,
+        zh:`${localized.zh??localized.en??fallback}\n\n操作摘要：${identity}${summary?'\n'+summary:''}\n完整参数见操作详情。`}};
     } catch(error) {release(exec);throw error;}
   }
   async function execute(exec,next) {

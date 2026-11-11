@@ -1,6 +1,6 @@
 # DSH Desktop 自动审查增强版
 
-版本：0.4.1。固定适配 DSH Desktop 0.2.2-rc.1，不对其他版本自动授予兼容豁免。
+版本：0.4.2。固定适配 DSH Desktop 0.2.2-rc.1，不对其他版本自动授予兼容豁免。
 
 本插件运行时不依赖官方 `@deepseek-ai/dsh-experimental-auto-review` 的安装或启用。项目内置该模块同版本的 MIT 代码副本，保留策略、授权来源分层、原生/PTC 动作完整性检查和严格 JSON 协议；加入独立审查模型、费用控制、精确删除策略和沙箱优先执行。副本不会随官方插件升级自动更新。
 
@@ -10,7 +10,7 @@
 
 | 权限菜单 | 标识 | 会话沙箱 | 审查行为 |
 | --- | --- | --- | --- |
-| 自动审查（工作区） / Auto review (Workspace) | `auto-review-workspace` | `workspace-write` | 支持的原生工作区操作免模型审查；外部和未知动作按配置走人工或模型 |
+| 自动审查（工作区） / Auto review (Workspace) | `auto-review-workspace` | `workspace-write` | 支持的原生工作区操作及默认全局原生只读免审；其余外部和未知动作按配置走人工或模型 |
 | 自动审查（完全访问） / Auto review (Full access) | `auto-review-desktop` | `danger-full-access` | 保留原行为，每个实际动作逐次送审 |
 
 已有 `auto-review-desktop` 会话继续使用完全访问模式。官方“自动审查（EXP）”仍使用 `auto`，由官方插件处理。本插件不替换官方入口、服务方法或确认流程。菜单及选中按钮使用原生组件、图标和当前中英文语言；两个选项的小徽标均为“增强”（英文为 ENHANCED），装饰随插件卸载移除。
@@ -36,7 +36,7 @@
 
 父/根会话输入框下方汇总增强子代理的原生待审批请求，展示子代理身份、工具、调用 ID、理由及可取得的原始参数，按收到次序列出；每项分别允许一次或拒绝，不提供全部批准或始终允许。使用原生待审批对象的答复方法，结果返回原子代理调用，保留原生 `approval/asked` / `approval/decided` 审计。取消、断开和其他页面已答复会移除对应项，多界面不能重复批准。
 
-汇总从插件挂载后订阅原生状态，同一子代理新到的并发请求也逐个保留；插件挂载前已经被原生最新请求遮住的旧请求，要等原生重新显示后才能补入。原子会话审批入口仍可使用。根会话的普通原生审批保持原有展示。切换模式、设置、用户授权、调用参数或 `never` 后，迟到的人工允许不能用于执行旧动作。
+汇总从插件挂载后订阅原生状态，同一子代理新到的并发请求也逐个保留；插件挂载前已经被原生最新请求遮住的旧请求，要等原生重新显示后才能补入。原子会话审批入口仍可使用。增强会话的原生审批卡补充工具名、调用 ID、完整参数和原始理由，包括根会话、子代理及 PTC 内层；原生批准/拒绝按钮和单次答复方法保持不变。读取不到准确详情时明确提示，已取消/已答复请求的迟到详情不再显示；其它权限模式保留宿主展示。切换模式、设置、用户授权、调用参数或 `never` 后，迟到的人工允许不能用于执行旧动作。
 
 工具拒绝作为错误结果回到子代理，模型可报告障碍或完成可行部分；不会自动把操作重写为父代理的新工具调用。真正需要人工的操作仍由用户逐次确认。
 
@@ -50,13 +50,14 @@
 工作区边界来自会话创建时的沙箱 `workspaceRoot`，不是可变的当前工作目录。
 
 - 同版本兼容的原生 `write/edit/apply_patch`，目标都在工作区内时免审。Patch 同时检查全部修改路径和移动目的地。越界文件修改在预执行阶段拒绝，要求同一操作显式设置 `sandbox_permissions: "danger-full-access"` 并提供 `justification`，随后由原生提权审批决定。
-- 原生 `read/read_image/glob/grep` 以及目录切换只有路径解析后位于工作区内才免审。省略搜索路径时使用当前工作目录；切到外部目录后不会扩大工作区。读取和搜索本身没有操作系统读取围栏，因此外部路径直接按 `ask/review` 处理。
+- 原生 `read/read_image/glob/grep` 默认免审，包括工作区外读取；`workspaceReads: allow` 仅适用于同版本完整 Schema 兼容且定义身份固定的原生工具。配置 `workspaceReads: approve` 时恢复“仅工作区内读取免审”，外部读取按 `workspaceEscalation` 处理。系统 ACL、原生读取限制和下游工具守卫照常执行，不授予系统原先不可读的数据。此项仅影响工作区模式，完全访问模式仍逐动作送审。
+- `working_directory` 查看位置免审；切换目录只有解析后位于工作区内才免审。省略搜索路径仍使用当前工作目录，切到外部目录不会扩大可写工作区。
 - 原生 `pwsh/bash` 保留真实 `workspace-write` 执行器，命令工作目录在工作区内时免审；显式外部工作目录按外部策略处理。命令被沙箱拒绝后，可对同一调用显式申请一次 `danger-full-access` 提权。
 - 未识别工具、MCP 工具、缺少沙箱能力或不兼容的工具定义均按外部策略处理，不因参数名恰好为 `path` 就免审。固定版本的完整工具 Schema 做兼容检查，并固定每个 agent 的定义身份；不兼容或替换后保守回退。
 
 模型提权在**实际工具体内的原生 `approval/request` 边界**进行。自动回答绑定正在执行的 agent 对象、工具名、内部调用 ID、精确提权原因和 token 上下文，只消费一次；PTC 内部动作使用自己的 token 和调用 ID。它不能批准外层调用、其他并行调用或其他审批理由。原生 `approval/asked` 和 `approval/decided` 审计保留。
 
-批准只改变该次调用使用的策略，不更改会话模式，也不留下之后可复用的允许缓存。设置、模式、用户授权、取消和 `never` 在关键边界复检；免审路径在真正分发前再次解析，防止排队期间链接改变。其他下游权限检查仍执行。
+批准只改变该次调用使用的策略，不更改会话模式，也不留下之后可复用的允许缓存。设置、模式、用户授权、取消和 `never` 在关键边界复检；受工作区路径限制的免审动作在真正分发前再次解析，防止排队期间链接改变。默认全局只读不增加读取路径围栏，仍检查精确动作和兼容定义。其他下游权限检查仍执行。
 
 ### 沙箱实际限制
 
@@ -75,7 +76,8 @@ Windows 当前沙箱限制**写入和删除**，不隔离读取、网络访问�
 
 | 设置 | 默认 | 可用范围 |
 | --- | --- | --- |
-| 工作区外操作 | 人工批准 | `ask/review`，只影响工作区模式 |
+| 原生只读范围 | 允许工作区外读取 | `workspaceReads: allow/approve`，仅工作区模式；`approve` 将外部读取交给工作区外策略 |
+| 工作区外操作 | 人工批准 | `ask/review`，只影响工作区模式中未免审的动作 |
 | 模型 | 跟随会话 | 跟随或已配置模型 |
 | 推理 | 支持时 low | low/默认/实际支持的档位 |
 | 超时 | 60,000 ms | 1,000–180,000 ms |
@@ -107,6 +109,12 @@ Windows 当前沙箱限制**写入和删除**，不隔离读取、网络访问�
 
 严格协议仅接受 low/medium + allow 或 medium/high + deny。重复 JSON 键、多余字段、夹杂文字、high + allow 或不完整流均失败。主请求路由、工作目录、授权、动作、设置和模式变化会使旧判定失效。`never` 下不能人工提权；即使模型曾允许，审批结束前切为 `never` 仍拒绝。外层 `run_code` 只作传输，内部每个实际动作独立路由。
 
+## Windows 系统命令排查
+
+`git` 报 `CommandNotFoundException` 时先区分“没有找到程序”和沙箱 `Access denied`。原生 pwsh 使用 `-NoProfile`，子进程继承 Desktop 启动时的环境；注册表中的系统 PATH 更新后，已运行的 Desktop 不会自动刷新自己的 PATH。本机 0.4.1 测试中，系统 PATH 已含 `C:\\Program Files\\Git\\cmd`，但工具进程 PATH 未含该项，绝对路径 Git 可在工作区沙箱内正常执行。无需提权或改成完全访问。
+
+临时可执行 `& 'C:\\Program Files\\Git\\cmd\\git.exe' --version` 并在本次命令使用该路径；长期完全退出 Desktop 后从具有最新 PATH 的进程重新启动，再核对 `Get-Command git`。插件不修改全局 PATH，也不把 shell 文本中的 `git` 自动替换成其他程序路径。
+
 ## 安装、审计和验证
 
 交付 `.tgz` 已含客户端构建，无安装脚本和额外 React。通过插件管理器“本地包”安装，启用后刷新当前 Desktop 页面。Bundle 只插入自己的 Host 入口与设置 namespace，注册两个自己的权限键；官方 Auto 缺席、禁用或 Loader 行 ID 改变时仍能独立启用。宿主不支持目录扩展或任一自有键冲突时激活失败，不接管官方键。
@@ -121,6 +129,8 @@ Windows 当前沙箱限制**写入和删除**，不隔离读取、网络访问�
 
 Codex 参考固定提交 `fe8e540a80f17716bf2a3007f06e8a602192c704`：
 
+- [工作区默认根读取与项目写入](https://github.com/openai/codex/blob/fe8e540a80f17716bf2a3007f06e8a602192c704/codex-rs/protocol/src/permissions.rs#L802-L843)
+- [显式读取限制仍约束全盘读取](https://github.com/openai/codex/blob/fe8e540a80f17716bf2a3007f06e8a602192c704/codex-rs/protocol/src/permissions.rs#L897-L915)
 - [授权有效性与完成处理](https://github.com/openai/codex/blob/fe8e540a80f17716bf2a3007f06e8a602192c704/codex-rs/ext/guardian-reviewer/src/completion.rs)
 - [模型与推理控制](https://github.com/openai/codex/blob/fe8e540a80f17716bf2a3007f06e8a602192c704/codex-rs/core/src/guardian/reviewer_config.rs)
 - [精确删除目标和窄范围目录](https://github.com/openai/codex/blob/fe8e540a80f17716bf2a3007f06e8a602192c704/codex-rs/prompts/templates/guardian/policy.md#L47-L65)

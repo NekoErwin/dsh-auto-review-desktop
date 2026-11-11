@@ -9,7 +9,7 @@ export const DESKTOP_PRESET_SPEC=Object.freeze({
 export const WORKSPACE_PRESET_SPEC=Object.freeze({
   sandbox:'workspace-write',approval:'ask',
   name:'Auto review (Workspace)',
-  description:'Skip review for supported sandbox-confined work. Outside requests use human approval or model review.',
+  description:'Skip review for supported sandbox-confined work and native read-only tools by default. Other outside requests use human approval or model review.',
 });
 
 // Durable identity also survives delegated children whose approval policy is never.

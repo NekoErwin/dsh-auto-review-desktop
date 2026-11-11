@@ -6,14 +6,14 @@ window.__ModuleLoader__.load({
     const { createElement: h, useState, useEffect, useRef, useSyncExternalStore, cloneElement, isValidElement, Children } = React;
     const { Menu, PermissionIconAutoReviewRegular } = require('@deepseek-ai/dsh-client-ui-primitives');
     const NS = 'autoReviewDesktop';
-    const FIELDS = ['routeMode', 'provider', 'model', 'reasoningMode', 'reasoningEffort', 'timeoutMs', 'maxOutputTokens', 'maxInputChars', 'maxReviewsPerTurn', 'maxRetries', 'failurePolicy', 'preciseDeletion', 'workspaceEscalation', 'denialPolicy', 'subagentApproval'];
-    const DEFAULTS = { routeMode: 'follow', provider: '', model: '', reasoningMode: 'low', reasoningEffort: '', timeoutMs: 60000, maxOutputTokens: 2048, maxInputChars: 120000, maxReviewsPerTurn: 100, maxRetries: 0, failurePolicy: 'deny', preciseDeletion: true, workspaceEscalation: 'ask', denialPolicy: 'deny', subagentApproval: 'inherit' };
+    const FIELDS = ['routeMode', 'provider', 'model', 'reasoningMode', 'reasoningEffort', 'timeoutMs', 'maxOutputTokens', 'maxInputChars', 'maxReviewsPerTurn', 'maxRetries', 'failurePolicy', 'preciseDeletion', 'workspaceEscalation', 'denialPolicy', 'subagentApproval', 'workspaceReads'];
+    const DEFAULTS = { routeMode: 'follow', provider: '', model: '', reasoningMode: 'low', reasoningEffort: '', timeoutMs: 60000, maxOutputTokens: 2048, maxInputChars: 120000, maxReviewsPerTurn: 100, maxRetries: 0, failurePolicy: 'deny', preciseDeletion: true, workspaceEscalation: 'ask', denialPolicy: 'deny', subagentApproval: 'inherit', workspaceReads: 'allow' };
     const LIMITS = { timeoutMs: [1000, 180000], maxOutputTokens: [256, 16384], maxInputChars: [4000, 1000000], maxReviewsPerTurn: [1, 1000], maxRetries: [0, 1] };
     const en = {
       permissionFullLabel: 'Auto review (Full access)', permissionWorkspaceLabel: 'Auto review (Workspace)',
       permissionFullBadge: 'ENHANCED', permissionWorkspaceBadge: 'ENHANCED',
       permissionFullDescription: 'Review each action with your configured model while running without a sandbox. Uses additional tokens.',
-      permissionWorkspaceDescription: 'Sandbox-confined operations skip review; outside-workspace requests use configured approval.',
+      permissionWorkspaceDescription: 'Sandbox-confined work and configured native read-only operations skip review; other actions use configured approval.',
       // Backward-compatible aliases for callers that used the single-mode copy.
       permissionLabel: 'Auto review (Full access)', permissionBadge: 'ENHANCED', permissionDescription: 'Review each action with your configured model while running without a sandbox. Uses additional tokens.',
       nav: 'Enhanced review', title: 'Enhanced review', intro: 'Choose the model and limits for automatic authorization review.',
@@ -51,6 +51,10 @@ window.__ModuleLoader__.load({
       workspaceEscalation: 'Outside-workspace actions', workspaceAsk: 'Human approval (default)', workspaceReview: 'Model review',
       workspaceEscalationHelp: 'Only controls outside-workspace actions and permission escalation in Workspace mode. Full access still reviews every action. Approval applies once and does not change the session mode. A model denial stays denied unless human fallback is explicitly enabled. The sandbox does not provide operating-system isolation for network access or reads.',
       invalidWorkspaceEscalation: 'Choose human approval or model review.',
+      workspaceReads: 'Native read-only scope', workspaceReadsAllow: 'All paths (default)', workspaceReadsApprove: 'Workspace paths only',
+      workspaceReadsHelp: 'In Workspace mode, native read, read_image, glob and grep skip review on all paths by default. Choose workspace paths only to send outside reads through the outside-workspace policy. Unknown and MCP tools do not automatically skip review.',
+      invalidWorkspaceReads: 'Choose all paths or workspace paths only.',
+      approvalDetails: 'Exact action details', approvalTool: 'Tool', approvalCall: 'Call ID', approvalMissing: 'The complete original action could not be retrieved. Do not infer the action from a generic approval reason.', approvalLoading: 'Loading the complete original action…', approvalWithdrawn: 'This approval request has ended.',
       pendingLoad: 'Wait for settings to finish loading.',
       usageTitle: 'Review usage', usageScope: 'This Host run only · Counts reset when the Host restarts. Loaded once when this page opens; refresh manually for the latest counts.',
       usageLoading: 'Loading review usage…', usageRefresh: 'Refresh usage', usageFailure: 'Could not load review usage.', usageInvalid: 'The Host returned an unsupported usage response.',
@@ -63,7 +67,7 @@ window.__ModuleLoader__.load({
       permissionFullLabel: '自动审查（完全访问）', permissionWorkspaceLabel: '自动审查（工作区）',
       permissionFullBadge: '增强', permissionWorkspaceBadge: '增强',
       permissionFullDescription: '无沙箱运行，按配置的模型逐次审查，会消耗额外 token。',
-      permissionWorkspaceDescription: '沙箱约束内的操作免审；工作区外请求按配置交由人工审批或模型审查。',
+      permissionWorkspaceDescription: '沙箱约束内的操作免审；设定范围的原生只读操作也免审，其他动作按设置审批。',
       permissionLabel: '自动审查（完全访问）', permissionBadge: '增强', permissionDescription: '无沙箱运行，按配置的模型逐次审查，会消耗额外 token。',
       nav: '增强审查', title: '增强审查', intro: '选择自动授权审查使用的模型与运行限额。',
       scope: '作用范围：当前配置档案 · 同时用于两种自动审查模式。保存设置不会切换会话模式。',
@@ -100,6 +104,10 @@ window.__ModuleLoader__.load({
       workspaceEscalation: '工作区外操作', workspaceAsk: '人工审批（默认）', workspaceReview: '模型审查',
       workspaceEscalationHelp: '仅配置工作区模式的外部动作及提权处理；完全访问模式仍逐次送审。批准只针对本次操作，不改变会话模式。模型拒绝默认直接生效，仅在显式启用人工回退后才询问用户。沙箱对网络访问和读取并非操作系统级隔离。',
       invalidWorkspaceEscalation: '请选择人工审批或模型审查。',
+      workspaceReads: '原生只读范围', workspaceReadsAllow: '全部路径（默认）', workspaceReadsApprove: '仅工作区内',
+      workspaceReadsHelp: '工作区模式默认允许原生 read、read_image、glob、grep 在全部路径免审。选择仅工作区内后，外部读取按工作区外操作策略处理。未知工具和 MCP 工具不会自动免审。',
+      invalidWorkspaceReads: '请选择全部路径或仅工作区内。',
+      approvalDetails: '具体操作详情', approvalTool: '工具', approvalCall: '调用 ID', approvalMissing: '无法取得完整原始操作，请勿根据通用审批理由推测动作。', approvalLoading: '正在读取完整原始操作…', approvalWithdrawn: '此审批请求已结束。',
       pendingLoad: '请等待设置读取完成。',
       usageTitle: '审查用量', usageScope: '仅统计本次服务运行，服务重启后归零。打开页面时读取一次；可手动刷新查看最新计数。',
       usageLoading: '正在读取审查用量…', usageRefresh: '刷新用量', usageFailure: '审查用量读取失败。', usageInvalid: '服务端返回了不支持的用量格式。',
@@ -123,6 +131,7 @@ window.__ModuleLoader__.load({
     function validateDraft(draft, choices) {
       const errors = {};
       if (typeof draft.preciseDeletion !== 'boolean') errors.preciseDeletion = 'invalidBoolean';
+      if (!['allow', 'approve'].includes(draft.workspaceReads)) errors.workspaceReads = 'invalidWorkspaceReads';
       if (!['ask', 'review'].includes(draft.workspaceEscalation)) errors.workspaceEscalation = 'invalidWorkspaceEscalation';
       if (!['deny', 'ask'].includes(draft.denialPolicy)) errors.denialPolicy = 'invalidDecisionPolicy';
       if (!['inherit', 'deny'].includes(draft.subagentApproval)) errors.subagentApproval = 'invalidSubagentApproval';
@@ -174,7 +183,7 @@ window.__ModuleLoader__.load({
 @media(max-width:640px){[data-auto-review-settings] .ar-grid{grid-template-columns:minmax(0,1fr)}}
 .ar-child-approvals{box-sizing:border-box;width:calc(100% - 32px);max-width:var(--dsh-chat-content-width);margin:6px auto;padding:12px;border:1px solid var(--dsw-alias-state-warn-secondary);border-radius:var(--dsw-radius-lg);background:var(--dsw-specific-input-major);color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px}
 .ar-child-approvals h3{font-size:14px;margin:0 0 6px}.ar-child-approvals p{margin:4px 0}.ar-child-approvals .ar-help{color:var(--dsw-alias-label-tertiary);font-size:12px}.ar-child-approvals ol{margin:8px 0 0;padding:0;list-style:none;max-height:340px;overflow-y:auto}.ar-child-approvals li{border-top:1px solid var(--dsw-alias-border-l2);padding:10px 0}.ar-child-approvals code{overflow-wrap:anywhere}.ar-child-approvals summary{cursor:pointer;margin:6px 0}.ar-child-approvals pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto;padding:8px;background:var(--dsw-alias-bg-layer-2);border-radius:var(--dsw-radius-md);font:12px/18px var(--ds-font-family-code,monospace)}
-.ar-child-approvals .ar-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.ar-child-approvals button{font:inherit;padding:5px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);background:var(--dsw-specific-input-major);color:var(--dsw-alias-label-primary);cursor:pointer}.ar-child-approvals .ar-primary{background:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-oncolor)}.ar-child-approvals button:disabled{opacity:.5;cursor:default}.ar-child-approvals button:focus-visible,.ar-child-approvals summary:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}.ar-child-approvals .ar-error{color:var(--dsw-alias-state-error-primary)}
+.ar-child-approvals .ar-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.ar-child-approvals button{font:inherit;padding:5px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);background:var(--dsw-specific-input-major);color:var(--dsw-alias-label-primary);cursor:pointer}.ar-child-approvals .ar-primary{background:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-oncolor)}.ar-child-approvals button:disabled{opacity:.5;cursor:default}.ar-child-approvals button:focus-visible,.ar-child-approvals summary:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}.ar-child-approvals .ar-error{color:var(--dsw-alias-state-error-primary)}\n.ar-approval-detail{display:flex;flex-direction:column;gap:6px;min-width:0}.ar-approval-detail p{margin:0}.ar-approval-detail pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;font-family:var(--ds-font-family-code);font-size:12px;line-height:1.5}.ar-approval-detail button{align-self:flex-start}
 `;
       document.head.appendChild(style);
       return () => style.remove();
@@ -351,6 +360,10 @@ window.__ModuleLoader__.load({
           number('timeoutMs'), number('maxOutputTokens'), number('maxInputChars'), number('maxReviewsPerTurn'),
           field(t('maxRetries'), select('maxRetries', [option('0', t('retryNone')), option('1', t('retryOnce'))], value => update('maxRetries', Number(value))), null, null, 'ar-maxRetries'),
         ), help(t('inputHelp'))),
+        h('div', { className: 'ar-card' }, field(t('workspaceReads'), select('workspaceReads', [option('allow', t('workspaceReadsAllow')), option('approve', t('workspaceReadsApprove'))], null, {
+          'aria-invalid': errors.workspaceReads ? true : undefined,
+          'aria-describedby': `ar-workspaceReads-help${errors.workspaceReads ? ' ar-workspaceReads-error' : ''}`,
+        }), t('workspaceReadsHelp'), errors.workspaceReads, 'ar-workspaceReads')),
         h('div', { className: 'ar-card' }, field(t('workspaceEscalation'), select('workspaceEscalation', [option('ask', t('workspaceAsk')), option('review', t('workspaceReview'))], null, {
           'aria-invalid': errors.workspaceEscalation ? true : undefined,
           'aria-describedby': `ar-workspaceEscalation-help${errors.workspaceEscalation ? ' ar-workspaceEscalation-error' : ''}`,
@@ -543,9 +556,12 @@ window.__ModuleLoader__.load({
     }
     async function readApprovalCall(ctx, entry, signal) {
       const snapshot = ctx.sessions.binding(entry.sessionId)?.session.getSnapshot();
-      const address = snapshot?.subagent?.address;
-      if (snapshot?.sessionId !== entry.sessionId || !address || address.childSessionId !== entry.sessionId) return undefined;
-      const page = await ctx.remote.session.events({ address: { kind: 'subagent', ...address }, maxMessages: 200 }, signal);
+      if (snapshot?.sessionId !== entry.sessionId || !entry.request.callId) return undefined;
+      const subagent = snapshot.subagent?.address;
+      if (subagent && subagent.childSessionId !== entry.sessionId) return undefined;
+      const address = subagent ? { kind: 'subagent', ...subagent } : { kind: 'session', sessionId: entry.sessionId };
+      const page = await ctx.remote.session.events({ address, maxMessages: 200 }, signal);
+      if (signal?.aborted || entry.request.answerable === false) return undefined;
       let step, calls = new Map();
       for (const { event } of page.records) {
         const data = event?.data;
@@ -576,6 +592,70 @@ window.__ModuleLoader__.load({
       }
       const call = calls.get(entry.request.callId);
       return call?.name === entry.request.toolName && typeof call.arguments === 'string' ? call : undefined;
+    }
+    /** Read-only detail lifetime. It never owns or answers the native approval. */
+    function loadApprovalDetail(ctx, entry, publish) {
+      const controller = new AbortController();
+      let active = true;
+      const update = value => { if (active) publish({ request: entry.request, ...value }); };
+      update({ status: 'loading' });
+      const withdraw = () => {
+        if (!active) return;
+        controller.abort(); update({ status: 'withdrawn' });
+      };
+      entry.request.result?.then(withdraw, withdraw);
+      Promise.resolve().then(() => readApprovalCall(ctx, entry, controller.signal)).then(call => {
+        if (!active || controller.signal.aborted || entry.request.answerable === false) return;
+        update(call ? { status: 'ready', call } : { status: 'missing' });
+      }, error => {
+        if (!active || controller.signal.aborted || entry.request.answerable === false) return;
+        update({ status: 'error', error: error instanceof Error ? error.message : String(error) });
+      });
+      return () => { active = false; controller.abort(); };
+    }
+    function ApprovalDetailBody({ request, detail, t, retry }) {
+      return h('section', { className: 'ar-approval-detail', 'aria-label': t('approvalDetails'), 'data-approval-call': request.callId },
+        h('p', null, t('approvalTool'), ': ', h('code', null, request.toolName)),
+        h('p', null, t('approvalCall'), ': ', h('code', null, request.callId)),
+        detail.status === 'ready' ? h(React.Fragment, null, h('p', null, t('childApprovalArguments')), h('pre', null, detail.call.arguments))
+          : h('p', { role: detail.status === 'loading' ? 'status' : undefined }, t(detail.status === 'loading' ? 'approvalLoading' : detail.status === 'withdrawn' ? 'approvalWithdrawn' : 'approvalMissing')),
+        detail.error ? h('p', { role: 'alert' }, detail.error) : null,
+        ['missing', 'error'].includes(detail.status) ? h('button', { type: 'button', onClick: retry }, t('childApprovalRetry')) : null);
+    }
+    function NativeApprovalDetail({ context, request, sessionId, callId, t }) {
+      const [detail, setDetail] = useState({ status: 'loading' });
+      const [revision, setRevision] = useState(0);
+      useEffect(() => loadApprovalDetail(context, { sessionId, request }, setDetail), [context, sessionId, request, callId, revision]);
+      // A new native request must never briefly show the previous request's args.
+      return h(ApprovalDetailBody, { request, detail: detail.request === request ? detail : { status: 'loading' }, t, retry: () => setRevision(value => value + 1) });
+    }
+    function registerApprovalDetails(ctx) {
+      return ctx.inject(['sessions', 'uiSession', 'remote'], scope => scope.slots.inject('conversation.approval.detail', () => {
+        let original, disposeEntry, updating = false;
+        const refresh = () => {
+          if (updating) return;
+          const entry = scope.slots.entries('conversation.approval.detail').find(item => item.options?.id !== 'auto-review-action-detail');
+          if (entry === original && disposeEntry) return;
+          updating = true;
+          try {
+          disposeEntry?.(); original = entry;
+          function Detail(props) {
+            const statuses = useSyncExternalStore(listener => scope.uiSession.sessionStatus.subscribe(listener), () => scope.uiSession.sessionStatus.getSnapshot());
+            const list = useSyncExternalStore(listener => scope.sessions.list.subscribe(listener), () => scope.sessions.list.getSnapshot());
+            const request = statuses.get(props.sessionId)?.pendingInteraction;
+            const permission = list.byId[props.sessionId]?.projectionValues?.permissions?.currentValue
+              ?? scope.sessions.binding(props.sessionId)?.session.projections?.faceOf('permissions')?.getSnapshot()?.currentValue;
+            if (!isReviewPreset(permission) || request?.kind !== 'approval' || request.sessionId !== props.sessionId || request.callId !== props.callId || !request.answerable)
+              return original?.component ? h(original.component, props) : null;
+            return h(NativeApprovalDetail, { context: scope, request, sessionId: props.sessionId, callId: props.callId, t: scope.locale.bind(NS) });
+          }
+          disposeEntry = scope.slots.register({ name: 'conversation.approval.detail', id: 'auto-review-action-detail', priority: (entry?.options?.priority ?? 0) - 1, locale: NS }, Detail);
+          } finally { updating = false; }
+        };
+        const unsubscribe = scope.slots.subscribe('conversation.approval.detail', refresh);
+        refresh();
+        return () => { unsubscribe(); disposeEntry?.(); };
+      }));
     }
     function ChildApprovalItem({ entry, collector, sessions, t, resolveReason }) {
       const row = sessions.list.getSnapshot().byId[entry.sessionId];
@@ -621,7 +701,10 @@ window.__ModuleLoader__.load({
       ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'auto-review-desktop: settings copy');
       ctx.effect(() => installStyles(), 'auto-review-desktop: settings styles');
       ctx.effect(() => registerPermissionPresentation(ctx), 'auto-review-desktop: permission presentation');
-      if (typeof ctx.inject === 'function') ctx.effect(() => registerChildApprovals(ctx), 'auto-review-desktop: child approval presentation');
+      if (typeof ctx.inject === 'function') {
+        ctx.effect(() => registerChildApprovals(ctx), 'auto-review-desktop: child approval presentation');
+        ctx.effect(() => registerApprovalDetails(ctx), 'auto-review-desktop: complete native approval details');
+      }
       const t = ctx.locale.bind(NS);
       ctx.effect(() => ctx.configForms.whileServed(['auto-review-desktop'], () => ctx.slots.inject('settings.section', () => ctx.slots.register({
         name: 'settings.section', id: 'auto-review-desktop', order: 12, label: () => t('nav'), locale: NS,
@@ -636,6 +719,7 @@ window.__ModuleLoader__.load({
       SettingsSection, UsageCard, draftOf, sameDraft, modelChoices, validateDraft,
       localizePermissionCatalog, decoratePermissionTree, registerPermissionPresentation, permissionDictionaries: { en, zh },
       createApprovalCollector, approvalRoot, readApprovalCall, ChildApprovalSummary, ChildApprovalItem, registerChildApprovals,
+      loadApprovalDetail, ApprovalDetailBody, NativeApprovalDetail, registerApprovalDetails,
     };
   },
 });
