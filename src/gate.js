@@ -1,3 +1,4 @@
+import { isDesktopReview } from './preset.js';
 import { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy';
 import { setApprovalPolicy } from '@deepseek-ai/dsh-user-approval';
 import { REVIEW_POLICY, snapshotAutoReview, reviewMessages, readDecision, denied, askUser, failed } from '../vendor/official.js';
@@ -10,7 +11,7 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
   const active=new Set();
   const shownBySession=new WeakMap();
   let accepting=true;
-  const isAuto=session=>ctx.permissionPresets.current(session)==='auto';
+  const isAuto=isDesktopReview;
   const cancelled=exec=>!accepting || lifecycle.signal.aborted || exec.signal?.aborted || !isAuto(exec.agent.session);
   async function gate(exec,next) {
     if(!exec.agent || (!exec.parent && exec.name==='run_code') || !isAuto(exec.agent.session)) return next();
@@ -119,7 +120,7 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
   async function close({applicationShutdown=false}={}) {
     accepting=false;
     lifecycle.abort(new ReviewError('CANCELLED','Review integration disposed'));
-    // Downgrade synchronously before yielding; never remove the gate while Auto leaves full host access.
+    // Downgrade our sessions before removing the preset and gate. Official Auto is untouched.
     try {
       if(!applicationShutdown) for(const session of ctx.sessions.list()) {
         try {

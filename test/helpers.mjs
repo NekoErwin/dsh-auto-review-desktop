@@ -23,7 +23,8 @@ export function fixture(options={}) {
   const session={id:'test-session',header:{origin:'user'},surface:{nodes},snapshotEvents:()=>events.slice(),requestHeader:()=>header,isOwnSeq:()=>true};
   const agent={session,id:session.id};const controller=new AbortController();
   const exec={agent,name:tool,arguments:args,callId:'call-1',rootCallId:'call-1',signal:controller.signal};
-  let config={...DEFAULTS,...options.config};let preset='auto';let policy='ask';let downstreamCalls=0;
+  let config={...DEFAULTS,...options.config};let preset='auto-review-desktop';let policy='ask';let downstreamCalls=0;
+  add('permission/preset',{preset});add('sandbox/mode',{mode:'danger-full-access'});add('approval/policy',{policy});
   session.append=(type,data)=>{add(type,data);if(type==='sandbox/mode')preset=data.mode;if(type==='approval/policy')policy=data.policy;};
   const requests=[];const prepares=[];
   let stream=options.stream??(()=>answer());
@@ -34,10 +35,10 @@ export function fixture(options={}) {
       const prepared={config:{...route,...controls},stream:opts=>{assert(!('tools' in opts));requests.push(opts);return stream(opts,requests.length);}};
       return prepared;
     }};
-  const ctx={llm,permissionPresets:{current:()=>preset,set:(_session,value)=>{preset=value;}},approval:{overrideOf:()=>policy},
+  const ctx={llm,permissionPresets:{presets:{},emitCatalogChanged(){},current:()=>preset,set:(_session,value)=>{preset=value;add('permission/preset',{preset:value});}},approval:{overrideOf:()=>policy},
     workingDirectory:{ensure:async()=> 'C:\\project'},sessions:{list:()=>[session]}};
   return {ctx,agent,session,exec,events,nodes,user,header,requests,prepares,controller,add,
     readConfig:()=>config,setConfig:next=>{config={...config,...next};},setStream:fn=>{stream=fn;},
-    setPolicy:value=>{policy=value;},setPreset:value=>{preset=value;},getPreset:()=>preset,
+    setPolicy:value=>{policy=value;add('approval/policy',{policy:value});},setPreset:value=>{preset=value;add('permission/preset',{preset:value});},getPreset:()=>preset,
     next:async()=>{downstreamCalls++;return {kind:'allow'};},getDownstreamCalls:()=>downstreamCalls};
 }

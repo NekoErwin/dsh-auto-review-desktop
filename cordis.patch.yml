@@ -1,8 +1,4 @@
-# Names on patches are guards, not replacements. Disable the official row,
-# then insert exactly one enhanced gate under its own settings namespace.
-- id: auto-review
-  name: '@deepseek-ai/dsh-experimental-auto-review'
-  disabled: true
+# Contribute our own entry without requiring or modifying the official bundle.
 - insert:
     - id: auto-review-desktop
       name: dsh-auto-review-desktop

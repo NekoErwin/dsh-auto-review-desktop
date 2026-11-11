@@ -2,6 +2,7 @@ import Schema from '@deepseek-ai/schemastery';
 import { createReviewGate } from './gate.js';
 import { DEFAULTS, normalizeConfig, ReviewStats } from './runtime.js';
 import { createAuditJournal } from './audit.js';
+import { registerDesktopPreset } from './preset.js';
 
 export const name='auto-review-desktop';
 export const inject=['approval','llm','permissionPresets','sessions','tools','workingDirectory','commands','settings','connection','webServer'];
@@ -40,7 +41,7 @@ export function apply(ctx,config) {
   });
   ctx.effect(function*(){
     yield ctx.on('tools/pre-execute',(exec,next)=>runtime.gate(exec,next),{prepend:true});
-    yield ctx.permissionPresets.registerAuto(()=>{if(!runtime.accepting)throw new Error('auto-review-desktop is closing');});
+    yield registerDesktopPreset(ctx.permissionPresets);
     yield async()=>{
       try {await runtime.close({applicationShutdown:ctx.root.fiber.state!==2});}
       finally {await journal.close();}

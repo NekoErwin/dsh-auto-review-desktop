@@ -14,10 +14,14 @@ function boot() {
     useState(initial) { const i = cursor++; if (!(i in state)) state[i] = typeof initial === 'function' ? initial() : initial; return [state[i], value => { state[i] = typeof value === 'function' ? value(state[i]) : value; }]; },
     useEffect(effect, next) { const i = cursor++; if (!deps[i] || next.some((value, at) => value !== deps[i][at])) { deps[i] = next; effects.push(effect); } },
     useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); },
+    cloneElement(node, props, ...children) { return { ...node, props: { ...node.props, ...props, ...(children.length ? { children: children.flat(Infinity) } : {}) } }; },
+    isValidElement: node => Boolean(node && typeof node === 'object' && 'type' in node && node.props),
+    Children: { map(children, fn) { return (Array.isArray(children) ? children : [children]).flat(Infinity).map(fn); } },
     useRef(initial) { const i = cursor++; if (!(i in state)) state[i] = { current: initial }; return state[i]; },
   };
-  vm.runInNewContext(source, { AbortController, window: { __ModuleLoader__: { load(value) { definition = value; plugin = value.factory(id => { assert.equal(id, 'react'); return React; }); } } } });
-  return { plugin, definition, render(props, component = plugin.SettingsSection) { cursor = 0; const node = component(props); while (effects.length) effects.shift()(); return node; } };
+  const primitives = { Menu: 'native-menu', PermissionIconAutoReviewRegular: 'native-review-icon' };
+  vm.runInNewContext(source, { AbortController, window: { __ModuleLoader__: { load(value) { definition = value; plugin = value.factory(id => { if (id === 'react') return React; assert.equal(id, '@deepseek-ai/dsh-client-ui-primitives'); return primitives; }); } } } });
+  return { plugin, definition, React, primitives, render(props, component = plugin.SettingsSection) { cursor = 0; const node = component(props); while (effects.length) effects.shift()(); return node; } };
 }
 function nodes(root) { if (!root || typeof root !== 'object') return []; return [root, ...(root.props?.children ?? []).flatMap(nodes)]; }
 function byId(root, id) { return nodes(root).find(node => node.props?.id === id); }
@@ -43,7 +47,8 @@ test('native bundle uses only host React and registers a settings menu contribut
     slots: { inject(name, fn) { assert.equal(name, 'settings.section'); return fn(); }, register(spec, component) { registered = { spec, component }; return () => {}; } },
   };
   // Styles are the only DOM dependency during registration.
-  const contextSource = source.replace('ctx.effect(() => installStyles(),', 'ctx.effect(() => (() => {}),');
+  const contextSource = source.replace('ctx.effect(() => installStyles(),', 'ctx.effect(() => (() => {}),')
+    .replace('ctx.effect(() => registerPermissionPresentation(ctx),', 'ctx.effect(() => (() => {}),');
   let registrationPlugin;
   vm.runInNewContext(contextSource, { window: { __ModuleLoader__: { load(value) { registrationPlugin = value.factory(() => ({})); } } } });
   registrationPlugin.apply(context);
@@ -167,4 +172,102 @@ test('usage RPC failure is visible and permits manual retry', async () => {
   const card = harness.render(props, harness.plugin.UsageCard);
   assert.ok(nodes(card).some(node => node.props?.role === 'alert' && node.props.children.some(text => typeof text === 'string' && text.includes('FORBIDDEN: Owner access required'))));
   assert.equal(byId(card, 'ar-usage-refresh').props.disabled, false);
+});
+
+function permissionHarness(harness) {
+  // Load the real pinned native component without changing its installed file.
+  // Expose its local function only within this VM for the presentation contract.
+  const nativeSource = readFileSync(new URL('../runtime-test/dsh/node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js', import.meta.url), 'utf8')
+    .replace('exports.apply = apply;', 'exports.PermissionSelect = PermissionSelect; exports.apply = apply;');
+  let native;
+  const jsx = (type, props) => harness.React.createElement(type, props, props.children);
+  vm.runInNewContext(nativeSource, { window: { __ModuleLoader__: { load(def) { native = def.factory(id => {
+    if (id === 'react') return harness.React;
+    if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' };
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return harness.primitives;
+    return {};
+  }); } } } });
+  let active = 'zh', registered, subscriber, removed = 0;
+  const original = { component: native.PermissionSelect, locale: 'permission.access', options: { priority: 0 }, inject: () => ({}) };
+  const context = {
+    locale: { getSnapshot: () => ({ active }), subscribe: () => () => {},
+      bind(namespace) { return (key, vars) => namespace === 'autoReviewDesktop'
+        ? harness.plugin.permissionDictionaries[active][key]
+        : `${key}${vars ? ':' + vars.name : ''}`; } },
+    slots: {
+      inject(name, fn) { assert.equal(name, 'conversation.input.permission'); return fn(); },
+      entries: () => [original], subscribe(_name, fn) { subscriber = fn; return () => { subscriber = null; }; },
+      register(spec, component) { registered = { spec, component }; return () => { removed++; }; },
+    },
+  };
+  const stop = harness.plugin.registerPermissionPresentation(context);
+  return { original, context, stop, get registered() { return registered; }, language(value) { active = value; },
+    get removed() { return removed; }, get subscribed() { return Boolean(subscriber); } };
+}
+function textOf(node) {
+  if (typeof node === 'string') return node;
+  if (Array.isArray(node)) return node.map(textOf).join(' ');
+  return node?.props ? textOf(node.props.children) : '';
+}
+
+test('native permission menu decorates only Desktop and updates when the UI language changes', () => {
+  const harness = boot(), adapter = permissionHarness(harness);
+  const catalog = { options: [
+    { value: 'auto', name: 'auto' },
+    { value: 'workspace-write', name: 'workspace-write' },
+    { value: 'auto-review-desktop', name: 'Auto review (Desktop)' },
+  ] };
+  const props = { locked: false, useProjection: () => ({ currentValue: 'auto-review-desktop' }),
+    usePermissionCatalog: selector => selector({ value: catalog }), select: async () => true };
+  function render() {
+    const wrapper = adapter.registered.component(props);
+    return harness.render(wrapper.props, wrapper.type);
+  }
+  let tree = render(), menu = nodes(tree).find(node => node.type === 'native-menu');
+  const desktop = menu.props.items.find(item => item.id === 'auto-review-desktop');
+  assert.equal(desktop.icon.type, 'native-review-icon');
+  assert(textOf(desktop.label).includes('自动审查（增强版）'));
+  assert(textOf(desktop.label).includes('无沙箱运行'));
+  assert(!textOf(desktop.label).includes('Auto review'));
+  assert.equal(menu.props.items.find(item => item.id === 'auto').label.props['aria-label'], 'auto.label auto.badge');
+  assert.equal(menu.props.items.find(item => item.id === 'workspace-write').label, 'preset.workspaceWrite');
+  assert.equal(menu.props.anchor.props.title, harness.plugin.permissionDictionaries.zh.permissionDescription);
+  assert(nodes(menu.props.anchor).some(node => node.type === 'native-review-icon'));
+  // Switch in place, preserving the native component and hook state.
+  adapter.language('en');tree = render();menu = nodes(tree).find(node => node.type === 'native-menu');
+  const english = textOf(menu.props.items.find(item => item.id === 'auto-review-desktop').label);
+  assert(english.includes('Auto review (Desktop)'));assert(english.includes('PLUS'));assert(!/[\u3400-\u9fff]/.test(english));
+  assert.equal(menu.props.anchor.props.title, harness.plugin.permissionDictionaries.en.permissionDescription);
+  assert.equal(adapter.registered.spec.inject, adapter.original.inject);
+  assert.equal(adapter.registered.spec.priority, -1);
+  adapter.stop();assert.equal(adapter.removed, 1);assert.equal(adapter.subscribed, false);
+});
+
+test('presentation preserves official Auto confirmation and selection behavior', () => {
+  const harness = boot(), adapter = permissionHarness(harness);const selected = [];
+  const props = { locked: false, useProjection: () => ({ currentValue: 'workspace-write' }),
+    usePermissionCatalog: selector => selector({ value: { options: [
+      { value: 'auto', name: 'auto' }, { value: 'workspace-write', name: 'workspace-write' },
+      { value: 'auto-review-desktop', name: 'Auto review (Desktop)' },
+    ] } }), select: async id => { selected.push(id); return true; } };
+  const render = () => { const wrapper = adapter.registered.component(props); return harness.render(wrapper.props, wrapper.type); };
+  let tree = render();const menu = nodes(tree).find(node => node.type === 'native-menu');
+  menu.props.onSelect('auto');tree = render();
+  assert.equal(selected.length, 0);
+  const confirmation = nodes(tree).find(node => node.props?.title === 'auto.confirm.title');
+  assert(confirmation);assert.equal(confirmation.props.description, 'auto.confirm.description');
+  confirmation.props.onConfirm();assert.deepEqual(selected, ['auto']);adapter.stop();
+});
+
+test('localized catalog keeps host data immutable and returns stable snapshots', () => {
+  const { plugin } = boot();
+  const official = Object.freeze({ value: 'auto', name: 'auto', description: 'official' });
+  const desktop = Object.freeze({ value: 'auto-review-desktop', name: 'Auto review (Desktop)' });
+  const catalog = Object.freeze({ options: Object.freeze([official, desktop]), defaultOptions: Object.freeze([desktop]) });
+  const t = key => plugin.permissionDictionaries.zh[key];
+  const first = plugin.localizePermissionCatalog(catalog, t);
+  assert.equal(first, plugin.localizePermissionCatalog(catalog, t));assert.notEqual(first, catalog);
+  assert.equal(first.options[0], official);assert.equal(catalog.options[1].name, 'Auto review (Desktop)');
+  assert.equal(first.defaultOptions[0].name, '自动审查（增强版）');
+  const other = { options: [official] };assert.equal(plugin.localizePermissionCatalog(other, t), other);
 });

@@ -88,10 +88,10 @@ test('hot unload downgrades active Auto sessions and cancels pending work',async
   assert.equal((await work).kind,'cancel');assert.equal(f.getPreset(),'workspace-write');assert.equal(f.getDownstreamCalls(),0);release();
 });
 test('application shutdown preserves persisted selection',async()=>{
-  const f=fixture();await gateFor(f).close({applicationShutdown:true});assert.equal(f.getPreset(),'auto');
+  const f=fixture();await gateFor(f).close({applicationShutdown:true});assert.equal(f.getPreset(),'auto-review-desktop');
 });
 test('non-Auto sessions and the PTC transport retain normal downstream behavior',async()=>{
-  const f=fixture();const gate=gateFor(f);f.setPreset('workspace-write');await gate.gate(f.exec,f.next);f.setPreset('auto');await gate.gate({...f.exec,name:'run_code'},f.next);assert.equal(f.requests.length,0);assert.equal(f.getDownstreamCalls(),2);
+  const f=fixture();const gate=gateFor(f);f.setPreset('workspace-write');await gate.gate(f.exec,f.next);f.setPreset('auto-review-desktop');await gate.gate({...f.exec,name:'run_code'},f.next);assert.equal(f.requests.length,0);assert.equal(f.getDownstreamCalls(),2);
 });
 test('official snapshot treats project instructions as constraints',()=>{
   const f=fixture();f.user.data.source={kind:'agent-instructions'};assert.equal(snapshotAutoReview(f.agent,f.exec,'C:\\project',new Map()).history[0].role,'constraint');
