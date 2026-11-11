@@ -5,9 +5,10 @@ import { createAuditJournal } from './audit.js';
 import { registerDesktopPreset } from './preset.js';
 import { createDelegationPolicy } from './delegation.js';
 import { createHumanApprovalGuard } from './human-approval.js';
+import { registerCoordinationContext } from './coordination.js';
 
 export const name='auto-review-desktop';
-export const inject=['approval','llm','permissionPresets','sessions','tools','workingDirectory','commands','settings','connection','webServer','sandboxPolicy','fs','shell','agents'];
+export const inject=['approval','llm','permissionPresets','sessions','tools','workingDirectory','commands','settings','connection','webServer','sandboxPolicy','fs','shell','agents','systemPrompt'];
 // One atomic volatile object: model/provider and policy changes never leave mixed live settings.
 export const Config=Schema.object({
   routeMode:Schema.union(['follow','specific']).default(DEFAULTS.routeMode),
@@ -52,6 +53,7 @@ export function apply(ctx,config) {
       ...stats.view()},null,2)}),
   });
   ctx.effect(function*(){
+    yield registerCoordinationContext(ctx);
     yield ctx.on('agent/created',payload=>delegation.created(payload));
     yield ctx.on('tools/pre-execute',(exec,next)=>human.prepare(exec,()=>runtime.gate(exec,next)),{prepend:true});
     yield ctx.on('tools/execute',(exec,next)=>delegation.execute(exec,()=>human.execute(exec,()=>runtime.execute(exec,next))));

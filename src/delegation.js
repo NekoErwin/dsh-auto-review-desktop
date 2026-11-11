@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy';
 import { setApprovalPolicy } from '@deepseek-ai/dsh-user-approval';
 import { desktopMode, DESKTOP_PRESET, WORKSPACE_PRESET } from './preset.js';
+import { nativeCompatible } from './native-compatibility.js';
 
 const ENHANCED=new Set([DESKTOP_PRESET,WORKSPACE_PRESET]);
 const delegated=session=>session.header?.origin==='subagent' && typeof session.header.parentSession==='string';
@@ -37,8 +38,11 @@ export function createDelegationPolicy(ctx,readConfig) {
   async function execute(exec,next) {
     const parent=exec.agent;
     const parentApproval=parent?.ctx?.get?.('approval')??ctx.approval;
+    const definition=parent?ctx.tools?.get?.(exec.name,parent,exec.toolSet):undefined;
+    const expectedProvider=parent && desktopMode(parent.session)==='workspace' && nativeCompatible(definition)
+      ?exec.name==='subagent'?'spawn':exec.name==='subagent_fork'?'fork':undefined:undefined;
     const snapshot=parent?Object.freeze({
-      parent,mode:desktopMode(parent.session),
+      parent,mode:desktopMode(parent.session),expectedProvider,
       policy:policyOf({approval:parentApproval},parent.session),signal:exec.signal,
     }):undefined;
     // Also clear an outer enhanced scope for unrelated/nested agentless calls.
@@ -72,6 +76,11 @@ export function createDelegationPolicy(ctx,readConfig) {
       if(captured.mode===undefined) {
         if(desktopMode(parent.session)!==undefined)quarantine(session,'permission mode changed across delegation');
         return;
+      }
+      if(captured.expectedProvider) {
+        const descriptor=events.findLast(event=>event.type==='subagent/descriptor')?.data;
+        if(descriptor?.version!==1 || descriptor.mode!=='continuable' || descriptor.provider!==captured.expectedProvider)
+          quarantine(session,'unsupported native delegation backend binding');
       }
       const sandbox=captured.mode==='full'?'danger-full-access':'workspace-write';
       const preset=captured.mode==='full'?DESKTOP_PRESET:WORKSPACE_PRESET;

@@ -30,7 +30,7 @@ test('real official and Desktop gates coexist and only the selected reviewer run
   const service=presetService(ctx);
   f.ctx.llm.stream=()=>{officialCalls++;return answer();};
   for(const [key,value] of Object.entries({...f.ctx,permissionPresets:service,
-    shell:{sandboxMode:'workspace-write'},settings:{configure:()=>()=>{}},
+    shell:{sandboxMode:'workspace-write'},systemPrompt:{context:()=>()=>{},getContextOrder:()=>0},settings:{configure:()=>()=>{}},
     commands:{register:()=>()=>{}},connection:{register:()=>()=>{}},webServer:{},tools:{},agents:{get(){},isOwnedBy(){return false;}},
   }))ctx.provide(key,value);
   const originalRegisterAuto=service.registerAuto;

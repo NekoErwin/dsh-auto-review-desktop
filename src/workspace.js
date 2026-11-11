@@ -5,11 +5,12 @@ import { configKey, normalizeConfig, actionKey, authorizationKey } from './runti
 import { snapshotReview } from './authorization.js';
 import { canAskHuman } from './delegation.js';
 import { nativeCompatible } from './native-compatibility.js';
+import { DELEGATIONS, COORDINATION, delegationArgumentError } from './coordination.js';
 
 const MUTATIONS=new Set(['write','edit','apply_patch']);
 const SHELLS=new Set(['pwsh','bash']);
 const READS=new Set(['read','read_image','glob','grep']);
-const NATIVE_NAMES=[...MUTATIONS,...SHELLS,...READS,'working_directory'];
+const NATIVE_NAMES=[...MUTATIONS,...SHELLS,...READS,'working_directory',...COORDINATION];
 const deny=reason=>({kind:'deny',reason:`[auto-review-desktop] ${reason}`});
 
 /** Compatibility is pinned to the shipped native schemas and the first matching
@@ -21,6 +22,11 @@ export function createWorkspaceRouter(ctx,readConfig,review,isAccepting) {
   const admitted=new Map();
   function trusted(exec) {
     if(!NATIVE_NAMES.includes(exec.name))return false;
+    if(DELEGATIONS.has(exec.name)) {
+      const backend=ctx.get?.('subagents')?.getProvider(exec.name==='subagent_fork'?'fork':'spawn');
+      if(!backend || typeof backend.prepareContinuable!=='function' || backend.agentRouteDefaults!==undefined
+        || backend.inheritsParentContext!==(exec.name==='subagent_fork'))return false;
+    }
     const definition=ctx.tools?.get?.(exec.name,exec.agent,exec.toolSet);
     if(!definition || ctx.tools.get(exec.name,exec.agent)!==definition || !nativeCompatible(definition))return false;
     let pinned=native.get(exec.agent);
@@ -45,8 +51,15 @@ export function createWorkspaceRouter(ctx,readConfig,review,isAccepting) {
     const target=await ctx.fs.resolve(path,{cwd,signal:exec.signal});
     return ctx.fs.contains(root,target);
   }
-  function remember(exec,config,frozen,checks,fastPath) {
-    if(exec.token!==undefined)admitted.set(exec.token,{mode:desktopMode(exec.agent.session),config:configKey(config),action:actionKey(exec),authority:authorizationKey(frozen),checks,fastPath});
+  function messageTarget(exec) {
+    const target=ctx.agents?.get(exec.arguments?.agent_id);
+    if(!target || !desktopMode(target.session))return undefined;
+    const child=target.session.header?.parentSession===exec.agent.id && ctx.agents.isOwnedBy(target.id,exec.agent)===true;
+    const parent=exec.agent.session.header?.parentSession===target.id && ctx.agents.isOwnedBy(exec.agent.id,target)===true;
+    return child || parent?{agent:target,mode:desktopMode(target.session)}:undefined;
+  }
+  function remember(exec,config,frozen,checks,fastPath,recipient) {
+    if(exec.token!==undefined)admitted.set(exec.token,{mode:desktopMode(exec.agent.session),config:configKey(config),action:actionKey(exec),authority:authorizationKey(frozen),checks,fastPath,recipient});
   }
   async function gate(exec,next) {
     let config;
@@ -59,7 +72,18 @@ export function createWorkspaceRouter(ctx,readConfig,review,isAccepting) {
       const args=exec.arguments??{};
       let bypass=false;
       let checks=[];
-      if(enforcing(exec)) {
+      let recipient;
+      if(trusted(exec) && COORDINATION.has(exec.name)) {
+        const invalid=delegationArgumentError(exec);
+        if(invalid)return deny(invalid);
+        if(DELEGATIONS.has(exec.name)) {
+          // A new child's cwd may become its writable workspace root. Keep that
+          // root inside the parent's root unless the outside policy approves it.
+          const path=args.cwd??cwd;bypass=await contained(exec,path);if(bypass)checks=[path];
+        } else if(exec.name==='send_message') {
+          recipient=messageTarget(exec);bypass=recipient!==undefined;
+        } else bypass=true; // Read-only discovery, or native ownership-checked stop.
+      } else if(enforcing(exec)) {
         // Wider requests are decided inside the native audited approval boundary.
         if(args.sandbox_permissions==='danger-full-access')bypass=true;
         else if(SHELLS.has(exec.name)) {
@@ -94,7 +118,7 @@ export function createWorkspaceRouter(ctx,readConfig,review,isAccepting) {
           ?deny('Outside-workspace or unsupported action requires human approval, but this session or subagent policy forbids it.')
           :{kind:'ask',reason:'Approve this exact outside-workspace or unsupported action once. The workspace sandbox remains in force unless this tool separately requests escalation.',displayReason:{en:'Approve this outside-workspace or unsupported action once.',zh:'仅批准本次工作区外或不受工作区沙箱约束的操作。'}};
       }
-      if(decision.kind==='allow' || decision.kind==='ask')remember(exec,config,frozen,checks,bypass);
+      if(decision.kind==='allow' || decision.kind==='ask')remember(exec,config,frozen,checks,bypass,recipient);
       return decision;
     } catch {
       return exec.signal.aborted?{kind:'cancel'}:deny('Workspace action integrity or boundary could not be verified.');
@@ -108,8 +132,10 @@ export function createWorkspaceRouter(ctx,readConfig,review,isAccepting) {
       const pathsUnchanged=ticket.checks.length===0 || (await Promise.all(ticket.checks.map(path=>contained(exec,path)))).every(Boolean);
       const cwd=await ctx.workingDirectory.ensure(exec.agent,exec.signal);
       const current=snapshotReview(ctx,exec.agent,exec,cwd,new Map());
+      const recipient=ticket.recipient?messageTarget(exec):undefined;
       // Finish all owned awaits before the final synchronous admission check.
-      if(!pathsUnchanged || !isAccepting() || exec.signal.aborted || desktopMode(exec.agent.session)!==ticket.mode
+      if(ticket.recipient && (recipient?.agent!==ticket.recipient.agent || recipient?.mode!==ticket.recipient.mode)
+        || !pathsUnchanged || !isAccepting() || exec.signal.aborted || desktopMode(exec.agent.session)!==ticket.mode
         || configKey(normalizeConfig(readConfig()))!==ticket.config || actionKey(exec)!==ticket.action
         || authorizationKey(current)!==ticket.authority || (ticket.fastPath && !trusted(exec))) {
         throw new Error('auto-review-desktop: workspace admission changed before execution; no operation was authorized');

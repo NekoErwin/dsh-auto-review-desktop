@@ -8,7 +8,7 @@ import { createReviewGate } from '../src/gate.js';
 import { fixture, answer } from './helpers.mjs';
 
 test('real Cordis mounts and disposes native settings, RPC and an independent gate',async()=>{
-  const ctx=new Context();const registered=new Map();let settings=0;let rpc;
+  const ctx=new Context();const registered=new Map();let settings=0;let rpc;let promptContext;
   const f=fixture();
   const presets=f.ctx.permissionPresets.presets;
   for(const [key,value] of Object.entries({...f.ctx,
@@ -16,15 +16,16 @@ test('real Cordis mounts and disposes native settings, RPC and an independent ga
     commands:{register(def){registered.set(def.name,def);return()=>registered.delete(def.name);}},
     connection:{register(owner,channel,handler){assert.equal(typeof owner.webServer.register,'function');assert.equal(channel,'/auto-review-desktop');rpc=handler;return()=>{rpc=undefined;};}},
     webServer:{register(){return()=>{};}},
+    systemPrompt:{getContextOrder:()=>0,context(def){assert.equal(def.name,'auto-review-desktop:delegation');promptContext=def;return()=>{promptContext=undefined;};}},
     tools:{},agents:{get(){},isOwnedBy(){return false;}},permissionPresets:{...f.ctx.permissionPresets,registerAuto(){throw Error('Official Auto must remain independent');}}
   }))ctx.provide(key,value);
   const fiber=ctx.plugin(plugin,{});await fiber;
-  assert.equal(fiber.state,2);assert(presets['auto-review-desktop']);assert.equal(settings,1);assert.equal(typeof rpc,'function');
+  assert.equal(fiber.state,2);assert(presets['auto-review-desktop']);assert.equal(settings,1);assert.equal(typeof rpc,'function');assert(promptContext);assert.equal(promptContext.text({agent:f.agent}), '');
   assert.equal((await rpc('status',{},null,{principal:{kind:'guest'}})).ok,false);
   const view=await rpc('status',{},null,{principal:{kind:'owner'}});assert(view.ok);assert(!('recent'in view.value));assert(!('sessionId'in view.value));
   const result=await ctx.waterfall('tools/pre-execute',f.exec,async()=>({kind:'allow'}));assert.equal(result.kind,'allow');
   await fiber.restart();assert.equal(fiber.state,2);assert(presets['auto-review-desktop']);assert.equal(settings,1);
-  await fiber.dispose();assert.equal(presets['auto-review-desktop'],undefined);assert.equal(settings,0);assert.equal(rpc,undefined);
+  await fiber.dispose();assert.equal(presets['auto-review-desktop'],undefined);assert.equal(settings,0);assert.equal(rpc,undefined);assert.equal(promptContext,undefined);
   await ctx.fiber.dispose();
 });
 test('real Schema materializes a single volatile configuration reference',()=>{
