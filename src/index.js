@@ -6,6 +6,7 @@ import { registerDesktopPreset } from './preset.js';
 import { createDelegationPolicy } from './delegation.js';
 import { createHumanApprovalGuard } from './human-approval.js';
 import { registerCoordinationContext } from './coordination.js';
+import { registerEscalationContext } from './escalation-context.js';
 
 export const name='auto-review-desktop';
 export const inject=['approval','llm','permissionPresets','sessions','tools','workingDirectory','commands','settings','connection','webServer','sandboxPolicy','fs','shell','agents','systemPrompt'];
@@ -54,6 +55,7 @@ export function apply(ctx,config) {
   });
   ctx.effect(function*(){
     yield registerCoordinationContext(ctx);
+    yield registerEscalationContext(ctx,readConfig);
     yield ctx.on('agent/created',payload=>delegation.created(payload));
     yield ctx.on('tools/pre-execute',(exec,next)=>human.prepare(exec,()=>runtime.gate(exec,next)),{prepend:true});
     yield ctx.on('tools/execute',(exec,next)=>delegation.execute(exec,()=>human.execute(exec,()=>runtime.execute(exec,next))));

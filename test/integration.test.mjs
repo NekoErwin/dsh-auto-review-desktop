@@ -16,7 +16,7 @@ test('real Cordis mounts and disposes native settings, RPC and an independent ga
     commands:{register(def){registered.set(def.name,def);return()=>registered.delete(def.name);}},
     connection:{register(owner,channel,handler){assert.equal(typeof owner.webServer.register,'function');assert.equal(channel,'/auto-review-desktop');rpc=handler;return()=>{rpc=undefined;};}},
     webServer:{register(){return()=>{};}},
-    systemPrompt:{getContextOrder:()=>0,context(def){assert.equal(def.name,'auto-review-desktop:delegation');promptContext=def;return()=>{promptContext=undefined;};}},
+    systemPrompt:{getContextOrder:()=>0,context(def){assert(['auto-review-desktop:delegation','auto-review-desktop:workspace-requests'].includes(def.name));if(def.name==='auto-review-desktop:delegation')promptContext=def;return()=>{if(def.name==='auto-review-desktop:delegation')promptContext=undefined;};}},
     tools:{},agents:{get(){},isOwnedBy(){return false;}},permissionPresets:{...f.ctx.permissionPresets,registerAuto(){throw Error('Official Auto must remain independent');}}
   }))ctx.provide(key,value);
   const fiber=ctx.plugin(plugin,{});await fiber;

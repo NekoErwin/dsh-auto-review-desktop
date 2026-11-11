@@ -38,6 +38,8 @@ python scripts/extract-test-runtime.py
 
 另有 `native-creation-lifecycle` 使用真实 `SubagentRuntime.startActivation/startLocal/materialize`、Session 日志、AgentRegistry 所有权、串行 `agent/created` 和输入提交路径，分别验证 spawn/fork；人为暂停创建监听器时不允许输入提交，完成后首条输入必须已是增强工作区/ask。该测试仅把 AgentFactory/AgentLoop 替换为不调用模型的最小工厂，投影、持久化和目录服务使用内存适配器，不修改 runtime 私有方法；它验证宿主创建生命周期，不是付费模型端到端测试。
 
+首次显式申请无需先出现拒绝：`approveEscalation` 要求严格更宽的模式和原生审批，并无历史失败条件。回归需从根/子会话的第一次外部写入直接携带明确参数，验证一次审查、原生审批审计、真实文件效果、拒绝无写入和权限不变。模型上下文按当前模式和配置动态说明此路径，并明确增强子代理对普通固定权限提示的例外；不得改写已记录的 `exec.arguments`、修改原生闭包、临时切换会话模式或自动重放 shell。
+
 `native-compatibility` 固定同版本完整 ToolSchema 的 SHA-256，并固定每个 agent 的首次兼容定义身份。它用于保守兼容回退，不认证 Host 插件实现。升级宿主、原生工具配置或 Schema 时，先验证真实执行/沙箱链路再更新兼容表；不要只更新 hash 以绕过回退。
 
 ## 打包和安装
@@ -47,7 +49,7 @@ node scripts/build.mjs
 python scripts/package-deliverables.py
 ```
 
-当前源码版本 `0.4.4`。输出在 `deliverables/`，只包含显式列出的源码和生成物，不包含运行时缓存、临时文件或 Git 数据。正式版本安装包已有时不覆盖，同版本重建输出 `-local.tgz`。正式发布先递增版本。
+当前源码版本 `0.4.5`。输出在 `deliverables/`，只包含显式列出的源码和生成物，不包含运行时缓存、临时文件或 Git 数据。正式版本安装包已有时不覆盖，同版本重建输出 `-local.tgz`。正式发布先递增版本。
 
 源码 ZIP 包含测试与开发说明；安装 TGZ 包含原生客户端构建。新检出先构建再打包。安装必须使用宿主插件管理器，不能手工改 profile composition 或运行 profile 包管理器。管理器返回 `application: applied` 才表示本次变更已经应用；需要刷新现有 Desktop 页面读取新客户端，不要启动替代服务器冒充验证。
 
