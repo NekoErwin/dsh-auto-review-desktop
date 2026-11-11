@@ -11,12 +11,12 @@ window.__ModuleLoader__.load({
     const LIMITS = { timeoutMs: [1000, 180000], maxOutputTokens: [256, 16384], maxInputChars: [4000, 1000000], maxReviewsPerTurn: [1, 1000], maxRetries: [0, 1] };
     const en = {
       permissionFullLabel: 'Auto review (Full access)', permissionWorkspaceLabel: 'Auto review (Workspace)',
-      permissionFullBadge: 'FULL', permissionWorkspaceBadge: 'WORKSPACE',
+      permissionFullBadge: 'ENHANCED', permissionWorkspaceBadge: 'ENHANCED',
       permissionFullDescription: 'Review each action with your configured model while running without a sandbox. Uses additional tokens.',
       permissionWorkspaceDescription: 'Sandbox-confined operations skip review; outside-workspace requests use configured approval.',
       // Backward-compatible aliases for callers that used the single-mode copy.
-      permissionLabel: 'Auto review (Full access)', permissionBadge: 'FULL', permissionDescription: 'Review each action with your configured model while running without a sandbox. Uses additional tokens.',
-      nav: 'Auto review (Desktop)', title: 'Auto review (Desktop)', intro: 'Choose the model and limits for automatic authorization review.',
+      permissionLabel: 'Auto review (Full access)', permissionBadge: 'ENHANCED', permissionDescription: 'Review each action with your configured model while running without a sandbox. Uses additional tokens.',
+      nav: 'Enhanced review', title: 'Enhanced review', intro: 'Choose the model and limits for automatic authorization review.',
       scope: 'Profile setting · Applies to both Auto review modes. Saving does not switch modes.',
       loading: 'Loading review settings…', unavailable: 'Review settings are unavailable.', readOnly: 'This profile is read-only. Settings cannot be saved.',
       route: 'Review model', follow: 'Follow the session model', specific: 'Use a configured model',
@@ -53,11 +53,11 @@ window.__ModuleLoader__.load({
     };
     const zh = {
       permissionFullLabel: '自动审查（完全访问）', permissionWorkspaceLabel: '自动审查（工作区）',
-      permissionFullBadge: '完全访问', permissionWorkspaceBadge: '工作区',
+      permissionFullBadge: '增强', permissionWorkspaceBadge: '增强',
       permissionFullDescription: '无沙箱运行，按配置的模型逐次审查，会消耗额外 token。',
       permissionWorkspaceDescription: '沙箱约束内的操作免审；工作区外请求按配置交由人工审批或模型审查。',
-      permissionLabel: '自动审查（完全访问）', permissionBadge: '完全访问', permissionDescription: '无沙箱运行，按配置的模型逐次审查，会消耗额外 token。',
-      nav: '自动审查（增强版）', title: '自动审查（增强版）', intro: '选择自动授权审查使用的模型与运行限额。',
+      permissionLabel: '自动审查（完全访问）', permissionBadge: '增强', permissionDescription: '无沙箱运行，按配置的模型逐次审查，会消耗额外 token。',
+      nav: '增强审查', title: '增强审查', intro: '选择自动授权审查使用的模型与运行限额。',
       scope: '作用范围：当前配置档案 · 同时用于两种自动审查模式。保存设置不会切换会话模式。',
       loading: '正在读取审查设置…', unavailable: '审查设置当前不可用。', readOnly: '当前配置档案只读，无法保存设置。',
       route: '审查模型', follow: '跟随会话模型', specific: '使用已配置的模型',

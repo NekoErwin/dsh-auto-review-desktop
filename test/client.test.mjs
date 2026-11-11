@@ -193,7 +193,7 @@ test('workspace escalation rejects unsupported values and retains a saved review
 
 test('workspace settings copy explains both modes and review-only deletion coverage', () => {
   const { plugin } = boot();
-  assert.equal(plugin.permissionDictionaries.zh.nav, '自动审查（增强版）');
+  assert.equal(plugin.permissionDictionaries.zh.nav, '增强审查');
   assert.equal(plugin.permissionDictionaries.zh.workspaceEscalation, '工作区外操作');
   assert.equal(plugin.permissionDictionaries.en.workspaceEscalation, 'Outside-workspace actions');
   assert.match(plugin.permissionDictionaries.en.workspaceEscalationHelp, /Full access still reviews every action/);
@@ -350,6 +350,7 @@ test('native permission menu independently decorates both review modes and follo
     assert.equal(full.icon.type, 'native-review-icon'); assert.equal(workspace.icon.type, 'native-review-icon');
     assert(textOf(full.label).includes('自动审查（完全访问）')); assert(textOf(full.label).includes('无沙箱运行'));
     assert(textOf(workspace.label).includes('自动审查（工作区）')); assert(textOf(workspace.label).includes('沙箱约束内的操作免审'));
+    for (const option of [full, workspace]) assert.equal(textOf(nodes(option.label).find(node => node.props.className === 'ar-permission-badge')), '增强');
     assert(!textOf(full.label).includes('Auto review')); assert(!textOf(workspace.label).includes('Auto review'));
     assert.equal(menu.props.items.find(item => item.id === 'auto').label.props['aria-label'], 'auto.label auto.badge');
     assert.equal(menu.props.items.find(item => item.id === 'workspace-write').label, 'preset.workspaceWrite');

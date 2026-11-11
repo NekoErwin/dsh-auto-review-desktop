@@ -1,6 +1,6 @@
 {
   "name": "dsh-auto-review-desktop",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "description": "Independent DSH Desktop authorization review with bounded execution and native settings",
   "main": "./src/index.js",
