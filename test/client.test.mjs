@@ -156,6 +156,53 @@ test('invalid deletion protection values are rejected, shown, and cannot be save
   assert.equal(harness.plugin.permissionDictionaries.en.preciseDeletion, 'Precise deletion protection');
 });
 
+test('workspace escalation defaults to human approval and saves only the outside-action policy', async () => {
+  const harness = boot(), io = propsOf(harness.plugin);
+  assert.equal(harness.plugin.draftOf().workspaceEscalation, 'ask');
+  harness.render(io.props);
+  let page = harness.render(io.props);
+  const control = byId(page, 'ar-workspaceEscalation');
+  assert.equal(control.type, 'select'); assert.equal(control.props.value, 'ask');
+  assert.deepEqual(control.props.children.map(option => option.props.value), ['ask', 'review']);
+  assert.equal(control.props['aria-describedby'], 'ar-workspaceEscalation-help');
+  assert.equal(byId(page, 'ar-mode'), undefined);
+  assert.equal(byId(page, 'ar-preset'), undefined);
+  control.props.onChange({ target: { value: 'review' } });
+  page = harness.render(io.props);
+  await page.props.onSubmit({ preventDefault() {} });
+  assert.equal(io.operations.length, 1); assert.equal(io.operations[0].revision, 7);
+  assert.deepEqual(JSON.parse(JSON.stringify(io.operations[0].ops)), [{ op: 'set', path: ['workspaceEscalation'], value: 'review' }]);
+  page = harness.render(io.props); assert.equal(byId(page, 'ar-workspaceEscalation').props.value, 'review');
+});
+
+test('workspace escalation rejects unsupported values and retains a saved review preference', async () => {
+  const harness = boot(), io = propsOf(harness.plugin), draft = harness.plugin.draftOf();
+  for (const value of ['allow', 'deny', '', false, null, undefined, {}]) {
+    assert.equal(harness.plugin.validateDraft({ ...draft, workspaceEscalation: value }, []).workspaceEscalation, 'invalidWorkspaceEscalation');
+  }
+  io.change({ value: { ...draft, workspaceEscalation: 'review' } });
+  harness.render(io.props); let page = harness.render(io.props);
+  assert.equal(byId(page, 'ar-workspaceEscalation').props.value, 'review');
+  byId(page, 'ar-workspaceEscalation').props.onChange({ target: { value: 'allow' } });
+  page = harness.render(io.props);
+  assert.equal(byId(page, 'ar-workspaceEscalation').props['aria-invalid'], true);
+  assert.ok(byId(page, 'ar-workspaceEscalation-error').props.children.includes('invalidWorkspaceEscalation'));
+  assert.equal(nodes(page).find(node => node.props?.type === 'submit').props.disabled, true);
+  await page.props.onSubmit({ preventDefault() {} }); assert.equal(io.operations.length, 0);
+});
+
+test('workspace settings copy explains both modes and review-only deletion coverage', () => {
+  const { plugin } = boot();
+  assert.equal(plugin.permissionDictionaries.zh.nav, '自动审查（增强版）');
+  assert.equal(plugin.permissionDictionaries.zh.workspaceEscalation, '工作区外操作');
+  assert.equal(plugin.permissionDictionaries.en.workspaceEscalation, 'Outside-workspace actions');
+  assert.match(plugin.permissionDictionaries.en.workspaceEscalationHelp, /Full access still reviews every action/);
+  assert.match(plugin.permissionDictionaries.en.workspaceEscalationHelp, /once.*does not change the session/);
+  assert.match(plugin.permissionDictionaries.en.workspaceEscalationHelp, /network access or reads/);
+  assert.match(plugin.permissionDictionaries.zh.preciseDeletionHelp, /工作区免审操作不经过删除审查/);
+  assert.match(plugin.permissionDictionaries.en.preciseDeletionHelp, /Workspace operations that skip review do not receive deletion review/);
+});
+
 test('concurrent host configuration prevents overwriting and keeps the local draft', async () => {
   const harness = boot(), io = propsOf(harness.plugin);
   harness.render(io.props);
@@ -179,6 +226,8 @@ test('read-only profile cannot submit, and held mirror errors stay visible', asy
   assert.equal(byId(page, 'ar-timeoutMs').props.disabled, true);
   assert.equal(byId(page, 'ar-preciseDeletion').props.disabled, true);
   assert.equal(byId(page, 'ar-preciseDeletion').props.checked, true);
+  assert.equal(byId(page, 'ar-workspaceEscalation').props.disabled, true);
+  assert.equal(byId(page, 'ar-workspaceEscalation').props.value, 'ask');
   await page.props.onSubmit({ preventDefault() {} });
   assert.equal(io.operations.length, 0);
 });
@@ -282,37 +331,60 @@ function textOf(node) {
   return node?.props ? textOf(node.props.children) : '';
 }
 
-test('native permission menu decorates only Desktop and updates when the UI language changes', () => {
-  const harness = boot(), adapter = permissionHarness(harness);
-  const catalog = { options: [
-    { value: 'auto', name: 'auto' },
-    { value: 'workspace-write', name: 'workspace-write' },
-    { value: 'auto-review-desktop', name: 'Auto review (Desktop)' },
-  ] };
-  const props = { locked: false, useProjection: () => ({ currentValue: 'auto-review-desktop' }),
-    usePermissionCatalog: selector => selector({ value: catalog }), select: async () => true };
-  function render() {
-    const wrapper = adapter.registered.component(props);
-    return harness.render(wrapper.props, wrapper.type);
+test('native permission menu independently decorates both review modes and follows the UI language', () => {
+  for (const selectedId of ['auto-review-desktop', 'auto-review-workspace']) {
+    const harness = boot(), adapter = permissionHarness(harness);
+    const catalog = { options: [
+      { value: 'auto', name: 'auto' },
+      { value: 'workspace-write', name: 'workspace-write' },
+      { value: 'auto-review-desktop', name: 'Legacy full mode' },
+      { value: 'auto-review-workspace', name: 'Workspace mode' },
+    ] };
+    const props = { locked: false, useProjection: () => ({ currentValue: selectedId }),
+      usePermissionCatalog: selector => selector({ value: catalog }), select: async () => true };
+    const render = () => { const wrapper = adapter.registered.component(props); return harness.render(wrapper.props, wrapper.type); };
+    let menu = nodes(render()).find(node => node.type === 'native-menu');
+    assert.equal(menu.props.selectedId, selectedId);
+    const full = menu.props.items.find(item => item.id === 'auto-review-desktop');
+    const workspace = menu.props.items.find(item => item.id === 'auto-review-workspace');
+    assert.equal(full.icon.type, 'native-review-icon'); assert.equal(workspace.icon.type, 'native-review-icon');
+    assert(textOf(full.label).includes('自动审查（完全访问）')); assert(textOf(full.label).includes('无沙箱运行'));
+    assert(textOf(workspace.label).includes('自动审查（工作区）')); assert(textOf(workspace.label).includes('沙箱约束内的操作免审'));
+    assert(!textOf(full.label).includes('Auto review')); assert(!textOf(workspace.label).includes('Auto review'));
+    assert.equal(menu.props.items.find(item => item.id === 'auto').label.props['aria-label'], 'auto.label auto.badge');
+    assert.equal(menu.props.items.find(item => item.id === 'workspace-write').label, 'preset.workspaceWrite');
+    const descriptionKey = selectedId === 'auto-review-desktop' ? 'permissionFullDescription' : 'permissionWorkspaceDescription';
+    assert.equal(menu.props.anchor.props.title, harness.plugin.permissionDictionaries.zh[descriptionKey]);
+    assert(nodes(menu.props.anchor).some(node => node.type === 'native-review-icon'));
+    adapter.language('en'); menu = nodes(render()).find(node => node.type === 'native-menu');
+    assert.equal(menu.props.selectedId, selectedId);
+    const englishFull = textOf(menu.props.items.find(item => item.id === 'auto-review-desktop').label);
+    const englishWorkspace = textOf(menu.props.items.find(item => item.id === 'auto-review-workspace').label);
+    assert(englishFull.includes('Auto review (Full access)')); assert(englishWorkspace.includes('Auto review (Workspace)'));
+    assert(!/[\u3400-\u9fff]/.test(englishFull + englishWorkspace));
+    assert.equal(menu.props.anchor.props.title, harness.plugin.permissionDictionaries.en[descriptionKey]);
+    assert.equal(adapter.registered.spec.inject, adapter.original.inject);
+    assert.equal(adapter.registered.spec.priority, -1);
+    adapter.stop(); assert.equal(adapter.removed, 1); assert.equal(adapter.subscribed, false);
   }
-  let tree = render(), menu = nodes(tree).find(node => node.type === 'native-menu');
-  const desktop = menu.props.items.find(item => item.id === 'auto-review-desktop');
-  assert.equal(desktop.icon.type, 'native-review-icon');
-  assert(textOf(desktop.label).includes('自动审查（增强版）'));
-  assert(textOf(desktop.label).includes('无沙箱运行'));
-  assert(!textOf(desktop.label).includes('Auto review'));
-  assert.equal(menu.props.items.find(item => item.id === 'auto').label.props['aria-label'], 'auto.label auto.badge');
-  assert.equal(menu.props.items.find(item => item.id === 'workspace-write').label, 'preset.workspaceWrite');
-  assert.equal(menu.props.anchor.props.title, harness.plugin.permissionDictionaries.zh.permissionDescription);
-  assert(nodes(menu.props.anchor).some(node => node.type === 'native-review-icon'));
-  // Switch in place, preserving the native component and hook state.
-  adapter.language('en');tree = render();menu = nodes(tree).find(node => node.type === 'native-menu');
-  const english = textOf(menu.props.items.find(item => item.id === 'auto-review-desktop').label);
-  assert(english.includes('Auto review (Desktop)'));assert(english.includes('PLUS'));assert(!/[\u3400-\u9fff]/.test(english));
-  assert.equal(menu.props.anchor.props.title, harness.plugin.permissionDictionaries.en.permissionDescription);
-  assert.equal(adapter.registered.spec.inject, adapter.original.inject);
-  assert.equal(adapter.registered.spec.priority, -1);
-  adapter.stop();assert.equal(adapter.removed, 1);assert.equal(adapter.subscribed, false);
+});
+
+test('both review modes retain the native selection callback and original ID', async () => {
+  for (const id of ['auto-review-workspace', 'auto-review-desktop']) {
+    const harness = boot(), adapter = permissionHarness(harness), selected = [];
+    const props = { locked: false, useProjection: () => ({ currentValue: 'workspace-write' }),
+      usePermissionCatalog: selector => selector({ value: { options: [
+        { value: 'auto', name: 'auto' }, { value: 'workspace-write', name: 'workspace-write' },
+        { value: 'auto-review-desktop', name: 'full' }, { value: 'auto-review-workspace', name: 'workspace' },
+      ] } }), select: async value => { selected.push(value); return true; } };
+    const wrapper = adapter.registered.component(props);
+    const tree = harness.render(wrapper.props, wrapper.type);
+    const menu = nodes(tree).find(node => node.type === 'native-menu');
+    assert.equal(menu.props.selectedId, 'workspace-write');
+    assert(!nodes(menu.props.anchor).some(node => node.type === 'native-review-icon'));
+    menu.props.onSelect(id); await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(selected, [id]); adapter.stop();
+  }
 });
 
 test('presentation preserves official Auto confirmation and selection behavior', () => {
@@ -334,12 +406,18 @@ test('presentation preserves official Auto confirmation and selection behavior',
 test('localized catalog keeps host data immutable and returns stable snapshots', () => {
   const { plugin } = boot();
   const official = Object.freeze({ value: 'auto', name: 'auto', description: 'official' });
-  const desktop = Object.freeze({ value: 'auto-review-desktop', name: 'Auto review (Desktop)' });
-  const catalog = Object.freeze({ options: Object.freeze([official, desktop]), defaultOptions: Object.freeze([desktop]) });
+  const desktop = Object.freeze({ value: 'auto-review-desktop', name: 'Legacy full mode', marker: 1 });
+  const workspace = Object.freeze({ value: 'auto-review-workspace', name: 'Workspace mode', marker: 2 });
+  const catalog = Object.freeze({ options: Object.freeze([official, desktop, workspace]), defaultOptions: Object.freeze([workspace, desktop]) });
   const t = key => plugin.permissionDictionaries.zh[key];
   const first = plugin.localizePermissionCatalog(catalog, t);
-  assert.equal(first, plugin.localizePermissionCatalog(catalog, t));assert.notEqual(first, catalog);
-  assert.equal(first.options[0], official);assert.equal(catalog.options[1].name, 'Auto review (Desktop)');
-  assert.equal(first.defaultOptions[0].name, '自动审查（增强版）');
-  const other = { options: [official] };assert.equal(plugin.localizePermissionCatalog(other, t), other);
+  assert.equal(first, plugin.localizePermissionCatalog(catalog, t)); assert.notEqual(first, catalog);
+  assert.equal(first.options[0], official); assert.equal(catalog.options[1].name, 'Legacy full mode');
+  assert.equal(first.defaultOptions[0].name, '自动审查（工作区）');
+  assert.equal(first.defaultOptions[1].name, '自动审查（完全访问）');
+  assert.equal(first.options[1].marker, 1); assert.equal(first.options[2].marker, 2);
+  assert.deepEqual(Array.from(first.options, option => option.value), ['auto', 'auto-review-desktop', 'auto-review-workspace']);
+  const defaultsOnly = { options: [official], defaultOptions: [workspace] };
+  assert.equal(plugin.localizePermissionCatalog(defaultsOnly, t).defaultOptions[0].name, '自动审查（工作区）');
+  const other = { options: [official] }; assert.equal(plugin.localizePermissionCatalog(other, t), other);
 });

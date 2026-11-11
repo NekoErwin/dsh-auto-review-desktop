@@ -6,14 +6,18 @@ window.__ModuleLoader__.load({
     const { createElement: h, useState, useEffect, useRef, useSyncExternalStore, cloneElement, isValidElement, Children } = React;
     const { Menu, PermissionIconAutoReviewRegular } = require('@deepseek-ai/dsh-client-ui-primitives');
     const NS = 'autoReviewDesktop';
-    const FIELDS = ['routeMode', 'provider', 'model', 'reasoningMode', 'reasoningEffort', 'timeoutMs', 'maxOutputTokens', 'maxInputChars', 'maxReviewsPerTurn', 'maxRetries', 'failurePolicy', 'preciseDeletion'];
-    const DEFAULTS = { routeMode: 'follow', provider: '', model: '', reasoningMode: 'low', reasoningEffort: '', timeoutMs: 60000, maxOutputTokens: 2048, maxInputChars: 120000, maxReviewsPerTurn: 100, maxRetries: 0, failurePolicy: 'deny', preciseDeletion: true };
+    const FIELDS = ['routeMode', 'provider', 'model', 'reasoningMode', 'reasoningEffort', 'timeoutMs', 'maxOutputTokens', 'maxInputChars', 'maxReviewsPerTurn', 'maxRetries', 'failurePolicy', 'preciseDeletion', 'workspaceEscalation'];
+    const DEFAULTS = { routeMode: 'follow', provider: '', model: '', reasoningMode: 'low', reasoningEffort: '', timeoutMs: 60000, maxOutputTokens: 2048, maxInputChars: 120000, maxReviewsPerTurn: 100, maxRetries: 0, failurePolicy: 'deny', preciseDeletion: true, workspaceEscalation: 'ask' };
     const LIMITS = { timeoutMs: [1000, 180000], maxOutputTokens: [256, 16384], maxInputChars: [4000, 1000000], maxReviewsPerTurn: [1, 1000], maxRetries: [0, 1] };
     const en = {
-      permissionLabel: 'Auto review (Desktop)', permissionBadge: 'PLUS',
-      permissionDescription: 'Review each action with your configured model and limits. Runs without a sandbox and uses additional tokens.',
+      permissionFullLabel: 'Auto review (Full access)', permissionWorkspaceLabel: 'Auto review (Workspace)',
+      permissionFullBadge: 'FULL', permissionWorkspaceBadge: 'WORKSPACE',
+      permissionFullDescription: 'Review each action with your configured model while running without a sandbox. Uses additional tokens.',
+      permissionWorkspaceDescription: 'Sandbox-confined operations skip review; outside-workspace requests use configured approval.',
+      // Backward-compatible aliases for callers that used the single-mode copy.
+      permissionLabel: 'Auto review (Full access)', permissionBadge: 'FULL', permissionDescription: 'Review each action with your configured model while running without a sandbox. Uses additional tokens.',
       nav: 'Auto review (Desktop)', title: 'Auto review (Desktop)', intro: 'Choose the model and limits for automatic authorization review.',
-      scope: 'Profile setting · Applies only to Auto review (Desktop). Select it in the session permission menu; saving does not switch modes.',
+      scope: 'Profile setting · Applies to both Auto review modes. Saving does not switch modes.',
       loading: 'Loading review settings…', unavailable: 'Review settings are unavailable.', readOnly: 'This profile is read-only. Settings cannot be saved.',
       route: 'Review model', follow: 'Follow the session model', specific: 'Use a configured model',
       followHelp: 'Each review uses that session’s current provider and model.',
@@ -35,7 +39,10 @@ window.__ModuleLoader__.load({
       conflict: 'Settings changed elsewhere. Reload saved settings to avoid overwriting that change.',
       invalidNumber: 'Enter a whole number from {min} to {max}.', invalidBoolean: 'Choose an enabled or disabled state.', modelRequired: 'Choose an available configured model.',
       preciseDeletion: 'Precise deletion protection',
-      preciseDeletionHelp: 'Enabled by default. Review must verify the resolved targets and deletion scope; insufficient evidence is never automatically approved. Inspected files or directories with a clear scope may be allowed. This is a model review policy, not an operating-system deletion block.',
+      preciseDeletionHelp: 'Enabled by default for Full access actions and Workspace actions sent for model review. Workspace operations that skip review do not receive deletion review. Review must verify resolved targets and scope; insufficient evidence must not be automatically approved. This is a model policy, not an operating-system deletion block.',
+      workspaceEscalation: 'Outside-workspace actions', workspaceAsk: 'Human approval (default)', workspaceReview: 'Model review',
+      workspaceEscalationHelp: 'Only controls outside-workspace actions and permission escalation in Workspace mode. Full access still reviews every action. Approval applies once and does not change the session mode. The sandbox does not provide operating-system isolation for network access or reads.',
+      invalidWorkspaceEscalation: 'Choose human approval or model review.',
       pendingLoad: 'Wait for settings to finish loading.',
       usageTitle: 'Review usage', usageScope: 'This Host run only · Counts reset when the Host restarts. Loaded once when this page opens; refresh manually for the latest counts.',
       usageLoading: 'Loading review usage…', usageRefresh: 'Refresh usage', usageFailure: 'Could not load review usage.', usageInvalid: 'The Host returned an unsupported usage response.',
@@ -45,10 +52,13 @@ window.__ModuleLoader__.load({
       usageAuditUnavailable: 'Audit storage is unavailable. These in-memory counts still cover this Host run.', usageStopped: 'The review service is not running.',
     };
     const zh = {
-      permissionLabel: '自动审查（增强版）', permissionBadge: '增强',
-      permissionDescription: '按配置的模型与限额逐次审查。无沙箱运行，会消耗额外 token。',
+      permissionFullLabel: '自动审查（完全访问）', permissionWorkspaceLabel: '自动审查（工作区）',
+      permissionFullBadge: '完全访问', permissionWorkspaceBadge: '工作区',
+      permissionFullDescription: '无沙箱运行，按配置的模型逐次审查，会消耗额外 token。',
+      permissionWorkspaceDescription: '沙箱约束内的操作免审；工作区外请求按配置交由人工审批或模型审查。',
+      permissionLabel: '自动审查（完全访问）', permissionBadge: '完全访问', permissionDescription: '无沙箱运行，按配置的模型逐次审查，会消耗额外 token。',
       nav: '自动审查（增强版）', title: '自动审查（增强版）', intro: '选择自动授权审查使用的模型与运行限额。',
-      scope: '作用范围：当前配置档案 · 仅对“自动审查（增强版）”生效。请在会话权限菜单中选择此模式；保存设置不会切换模式。',
+      scope: '作用范围：当前配置档案 · 同时用于两种自动审查模式。保存设置不会切换会话模式。',
       loading: '正在读取审查设置…', unavailable: '审查设置当前不可用。', readOnly: '当前配置档案只读，无法保存设置。',
       route: '审查模型', follow: '跟随会话模型', specific: '使用已配置的模型',
       followHelp: '每次审查沿用该会话当前的提供方和模型。',
@@ -70,7 +80,10 @@ window.__ModuleLoader__.load({
       conflict: '设置已在其他位置修改。请重新载入已保存设置，避免覆盖该修改。',
       invalidNumber: '请输入 {min} 至 {max} 之间的整数。', invalidBoolean: '请选择开启或关闭状态。', modelRequired: '请选择当前可用的已配置模型。',
       preciseDeletion: '精确删除保护',
-      preciseDeletionHelp: '默认开启。审查要求核实解析后的目标和删除范围；证据不足不自动批准。经检查、范围明确的文件或目录可允许。这是模型审查策略，而非操作系统删除拦截。',
+      preciseDeletionHelp: '默认开启，用于完全访问模式及工作区模式中送交模型审查的动作。工作区免审操作不经过删除审查。审查须核实解析后的目标与范围，证据不足时不得自动批准。这是模型策略，而非操作系统删除拦截。',
+      workspaceEscalation: '工作区外操作', workspaceAsk: '人工审批（默认）', workspaceReview: '模型审查',
+      workspaceEscalationHelp: '仅配置工作区模式的外部动作及提权处理；完全访问模式仍逐次送审。批准只针对本次操作，不改变会话模式。沙箱对网络访问和读取并非操作系统级隔离。',
+      invalidWorkspaceEscalation: '请选择人工审批或模型审查。',
       pendingLoad: '请等待设置读取完成。',
       usageTitle: '审查用量', usageScope: '仅统计本次服务运行，服务重启后归零。打开页面时读取一次；可手动刷新查看最新计数。',
       usageLoading: '正在读取审查用量…', usageRefresh: '刷新用量', usageFailure: '审查用量读取失败。', usageInvalid: '服务端返回了不支持的用量格式。',
@@ -94,6 +107,7 @@ window.__ModuleLoader__.load({
     function validateDraft(draft, choices) {
       const errors = {};
       if (typeof draft.preciseDeletion !== 'boolean') errors.preciseDeletion = 'invalidBoolean';
+      if (!['ask', 'review'].includes(draft.workspaceEscalation)) errors.workspaceEscalation = 'invalidWorkspaceEscalation';
       if (draft.routeMode === 'specific' && !choices.some(choice => choice.provider === draft.provider && choice.model.id === draft.model)) errors.model = 'modelRequired';
       const picked = choices.find(choice => choice.provider === draft.provider && choice.model.id === draft.model);
       if (draft.reasoningMode === 'specific' && (draft.routeMode !== 'specific' || !picked?.model.reasoning?.efforts?.some(effort => effort.id === draft.reasoningEffort))) errors.reasoningEffort = 'effortMissing';
@@ -316,6 +330,10 @@ window.__ModuleLoader__.load({
           number('timeoutMs'), number('maxOutputTokens'), number('maxInputChars'), number('maxReviewsPerTurn'),
           field(t('maxRetries'), select('maxRetries', [option('0', t('retryNone')), option('1', t('retryOnce'))], value => update('maxRetries', Number(value))), null, null, 'ar-maxRetries'),
         ), help(t('inputHelp'))),
+        h('div', { className: 'ar-card' }, field(t('workspaceEscalation'), select('workspaceEscalation', [option('ask', t('workspaceAsk')), option('review', t('workspaceReview'))], null, {
+          'aria-invalid': errors.workspaceEscalation ? true : undefined,
+          'aria-describedby': `ar-workspaceEscalation-help${errors.workspaceEscalation ? ' ar-workspaceEscalation-error' : ''}`,
+        }), t('workspaceEscalationHelp'), errors.workspaceEscalation, 'ar-workspaceEscalation')),
         h('div', { className: 'ar-card' }, field(t('preciseDeletion'), h('input', {
           id: 'ar-preciseDeletion', type: 'checkbox', checked: draft.preciseDeletion, disabled,
           'aria-invalid': errors.preciseDeletion ? true : undefined,
@@ -334,33 +352,40 @@ window.__ModuleLoader__.load({
 
     const PERMISSION_SLOT = 'conversation.input.permission';
     const DESKTOP_PRESET = 'auto-review-desktop';
+    const WORKSPACE_PRESET = 'auto-review-workspace';
+    const permissionCopy = Object.freeze({
+      [DESKTOP_PRESET]: ['permissionFullLabel', 'permissionFullDescription', 'permissionFullBadge'],
+      [WORKSPACE_PRESET]: ['permissionWorkspaceLabel', 'permissionWorkspaceDescription', 'permissionWorkspaceBadge'],
+    });
+    const isReviewPreset = id => Object.hasOwn(permissionCopy, id);
     const localizedCatalogs = new WeakMap();
     function localizePermissionCatalog(catalog, t) {
-      if (!catalog?.options?.some(option => option.value === DESKTOP_PRESET)) return catalog;
-      const name = t('permissionLabel'), description = t('permissionDescription');
-      const key = JSON.stringify([name, description]);
+      if (![...(catalog?.options ?? []), ...(catalog?.defaultOptions ?? [])].some(option => isReviewPreset(option.value))) return catalog;
+      const copy = Object.fromEntries(Object.entries(permissionCopy).map(([id, [label, description]]) => [id, { name: t(label), description: t(description) }]));
+      const key = JSON.stringify(copy);
       let translations = localizedCatalogs.get(catalog);
       if (!translations) localizedCatalogs.set(catalog, translations = new Map());
       if (!translations.has(key)) {
-        const localize = options => options?.map(option => option.value === DESKTOP_PRESET ? { ...option, name, description } : option);
+        const localize = options => options?.map(option => isReviewPreset(option.value) ? { ...option, ...copy[option.value] } : option);
         translations.set(key, { ...catalog, options: localize(catalog.options), defaultOptions: localize(catalog.defaultOptions) });
       }
       return translations.get(key);
     }
-    function permissionOptionLabel(t) {
+    function permissionOptionLabel(id, t) {
+      const [label, description, badge] = permissionCopy[id];
       return h('span', { className: 'ar-permission-label' },
         h('span', { className: 'ar-permission-heading' },
-          h('span', null, t('permissionLabel')),
-          h('span', { className: 'ar-permission-badge' }, t('permissionBadge'))),
-        h('span', { className: 'ar-permission-description' }, t('permissionDescription')));
+          h('span', null, t(label)),
+          h('span', { className: 'ar-permission-badge' }, t(badge))),
+        h('span', { className: 'ar-permission-description' }, t(description)));
     }
     function decoratePermissionTree(node, t) {
       if (!isValidElement(node)) return node;
-      if (node.type === Menu && node.props.items?.some(item => item.id === DESKTOP_PRESET)) {
-        const items = node.props.items.map(item => item.id === DESKTOP_PRESET
-          ? { ...item, icon: h(PermissionIconAutoReviewRegular), label: permissionOptionLabel(t) } : item);
+      if (node.type === Menu && node.props.items?.some(item => isReviewPreset(item.id))) {
+        const items = node.props.items.map(item => isReviewPreset(item.id)
+          ? { ...item, icon: h(PermissionIconAutoReviewRegular), label: permissionOptionLabel(item.id, t) } : item);
         let anchor = node.props.anchor;
-        if (node.props.selectedId === DESKTOP_PRESET && isValidElement(anchor)) {
+        if (isReviewPreset(node.props.selectedId) && isValidElement(anchor)) {
           // The host owns the trigger, its handlers and the chevron. Add only our
           // glyph; the localized catalog already supplies its text and tooltip.
           anchor = cloneElement(anchor, { 'data-auto-review-permission': '' },
@@ -379,7 +404,7 @@ window.__ModuleLoader__.load({
         const refresh = () => {
           // Stay attached to the live native contribution across plugin reloads.
           // Do not mutate its registration, module, locale, or any official option.
-          const entry = ctx.slots.entries(PERMISSION_SLOT).find(item => item.locale === 'permission.access' && item.options?.id !== DESKTOP_PRESET);
+          const entry = ctx.slots.entries(PERMISSION_SLOT).find(item => item.locale === 'permission.access' && !isReviewPreset(item.options?.id));
           if (entry === original) return;
           disposeEntry?.(); disposeEntry = undefined; original = entry;
           if (!entry || typeof entry.component !== 'function') return;

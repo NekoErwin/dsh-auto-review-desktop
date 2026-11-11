@@ -22,7 +22,7 @@ export function fixture(options={}) {
   const header={config:{provider:'main',model:'primary'},tools:[{name:tool,description:'Write one project file',parameters:{type:'object',properties:{}}}]};
   const session={id:'test-session',header:{origin:'user'},surface:{nodes},snapshotEvents:()=>events.slice(),requestHeader:()=>header,isOwnSeq:()=>true};
   const agent={session,id:session.id};const controller=new AbortController();
-  const exec={agent,name:tool,arguments:args,callId:'call-1',rootCallId:'call-1',signal:controller.signal};
+  const exec={agent,name:tool,arguments:args,callId:'call-1',rootCallId:'call-1',token:Symbol('test-execution'),signal:controller.signal};
   let config={...DEFAULTS,...options.config};let preset='auto-review-desktop';let policy='ask';let downstreamCalls=0;
   add('permission/preset',{preset});add('sandbox/mode',{mode:'danger-full-access'});add('approval/policy',{policy});
   session.append=(type,data)=>{add(type,data);if(type==='sandbox/mode')preset=data.mode;if(type==='approval/policy')policy=data.policy;};
@@ -36,6 +36,8 @@ export function fixture(options={}) {
       return prepared;
     }};
   const ctx={llm,permissionPresets:{presets:{},emitCatalogChanged(){},current:()=>preset,set:(_session,value)=>{preset=value;add('permission/preset',{preset:value});}},approval:{overrideOf:()=>policy},
+    tools:{},fs:{sandboxMode:'workspace-write'},shell:{sandboxMode:'workspace-write'},
+    sandboxPolicy:{resolve:()=>({mode:events.findLast(e=>e.type==='sandbox/mode')?.data.mode,workspaceRoot:'C:\\project'})},
     workingDirectory:{ensure:async()=> 'C:\\project'},sessions:{list:()=>[session]}};
   return {ctx,agent,session,exec,events,nodes,user,header,requests,prepares,controller,add,
     readConfig:()=>config,setConfig:next=>{config={...config,...next};},setStream:fn=>{stream=fn;},

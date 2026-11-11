@@ -5,7 +5,7 @@ import { createAuditJournal } from './audit.js';
 import { registerDesktopPreset } from './preset.js';
 
 export const name='auto-review-desktop';
-export const inject=['approval','llm','permissionPresets','sessions','tools','workingDirectory','commands','settings','connection','webServer'];
+export const inject=['approval','llm','permissionPresets','sessions','tools','workingDirectory','commands','settings','connection','webServer','sandboxPolicy','fs','shell'];
 // One atomic volatile object: model/provider and policy changes never leave mixed live settings.
 export const Config=Schema.object({
   routeMode:Schema.union(['follow','specific']).default(DEFAULTS.routeMode),
@@ -18,6 +18,7 @@ export const Config=Schema.object({
   maxReviewsPerTurn:Schema.number().min(1).max(1000).step(1).default(DEFAULTS.maxReviewsPerTurn),
   maxRetries:Schema.union([0,1]).default(DEFAULTS.maxRetries),
   preciseDeletion:Schema.boolean().default(DEFAULTS.preciseDeletion),
+  workspaceEscalation:Schema.union(['ask','review']).default(DEFAULTS.workspaceEscalation),
   failurePolicy:Schema.union(['deny','ask']).default(DEFAULTS.failurePolicy),
 }).volatile();
 
@@ -42,6 +43,9 @@ export function apply(ctx,config) {
   });
   ctx.effect(function*(){
     yield ctx.on('tools/pre-execute',(exec,next)=>runtime.gate(exec,next),{prepend:true});
+    yield ctx.on('tools/execute',(exec,next)=>runtime.execute(exec,next),{prepend:true});
+    yield ctx.on('approval/request',(request,next)=>runtime.approval(request,next),{prepend:true});
+    yield ctx.on('tools/result',exec=>{runtime.release(exec);});
     yield registerDesktopPreset(ctx.permissionPresets);
     yield async()=>{
       try {await runtime.close({applicationShutdown:ctx.root.fiber.state!==2});}

@@ -1,4 +1,5 @@
-import { isDesktopReview } from './preset.js';
+import { isDesktopReview, desktopMode } from './preset.js';
+import { createWorkspaceRouter } from './workspace.js';
 import { reviewPolicy, deletionEvidenceMessage, deletionActivityKey } from './deletion-policy.js';
 import { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy';
 import { setApprovalPolicy } from '@deepseek-ai/dsh-user-approval';
@@ -14,10 +15,11 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
   let accepting=true;
   const isAuto=isDesktopReview;
   const cancelled=exec=>!accepting || lifecycle.signal.aborted || exec.signal?.aborted || !isAuto(exec.agent.session);
-  async function gate(exec,next) {
+  async function review(exec,next) {
     if(!exec.agent || (!exec.parent && exec.name==='run_code') || !isAuto(exec.agent.session)) return next();
     const completion=Promise.withResolvers();active.add(completion.promise);
     const session=exec.agent.session;
+    const initialMode=desktopMode(session);
     const signal=AbortSignal.any([lifecycle.signal,...exec.signal?[exec.signal]:[]]);
     let c;
     let expiresAt;
@@ -53,7 +55,7 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
     };
     const validateFresh=async reviewSignal=>{
       reviewSignal.throwIfAborted();
-      if(cancelled(exec)) throw new ReviewError('CANCELLED','Review no longer applies');
+      if(cancelled(exec) || desktopMode(session)!==initialMode) throw new ReviewError('CANCELLED','Review no longer applies');
       if(configKey(normalizeConfig(readConfig()))!==configKey(c) || actionKey(exec)!==exactAction) throw new ReviewError('STALE','Review settings or pending action changed');
       if(c.preciseDeletion && (JSON.stringify(deletionEvidenceMessage(session,exec))!==deletionEvidence || deletionActivityKey(session,exec)!==deletionActivity)) throw new ReviewError('STALE','Deletion inspection evidence or tool activity changed during review');
       const current=capture(exec.agent,exec,await ctx.workingDirectory.ensure(exec.agent,reviewSignal));
@@ -128,6 +130,7 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
   }
   async function close({applicationShutdown=false}={}) {
     accepting=false;
+    workspace.close();
     lifecycle.abort(new ReviewError('CANCELLED','Review integration disposed'));
     // Downgrade our sessions before removing the preset and gate. Official Auto is untouched.
     try {
@@ -143,5 +146,10 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
       }
     } finally {await Promise.allSettled([...active]);}
   }
-  return {gate,close,stats,budget,get accepting(){return accepting;}};
+  const workspace=createWorkspaceRouter(ctx,readConfig,review,()=>accepting);
+  async function gate(exec,next) {
+    if(!exec.agent || (!exec.parent && exec.name==='run_code'))return next();
+    return desktopMode(exec.agent.session)==='workspace'?workspace.gate(exec,next):review(exec,next);
+  }
+  return {gate,execute:workspace.execute,approval:workspace.approval,release:workspace.release,close,stats,budget,get accepting(){return accepting;}};
 }

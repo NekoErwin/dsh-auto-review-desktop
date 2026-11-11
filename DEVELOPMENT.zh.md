@@ -1,58 +1,52 @@
 # 开发与版本管理
 
-本目录是 Git 项目根目录，默认分支为 main。当前仅初始化并暂存文件，按用户选择尚未创建提交，也未配置远程仓库。
+本目录是 Git 项目根目录，默认分支为 `main`。远程仓库为 `https://github.com/NekoErwin/dsh-auto-review-desktop.git`。仅在用户要求时推送。
 
 ## 目录
 
-- src/：插件后端和原生 Desktop 设置界面。
-- vendor/：保留许可证及来源记录的官方审查模块，是运行所需项目源码。
-- test/：审查行为、原生设置、Cordis 生命周期和 Loader patch 测试。
-- scripts/：客户端构建、发布打包及离线测试依赖提取工具。
-- lib/：生成的原生客户端 bundle，被 Git 忽略。
-- deliverables/：生成的安装包、源码压缩包和本机验证记录，被 Git 忽略。
-- runtime-test/：同版本 Desktop 测试依赖缓存，被 Git 忽略。
-- tmp/：调研报告、参考源码、一次性探测工具、历史迁移辅助包和本机备份，统一归档并被 Git 忽略。
+- `src/`：Host 审查门、双权限模式路由、原生工具兼容检查和 Desktop 设置。
+- `vendor/`：保留许可证及来源记录的官方审查模块。
+- `test/`：模型审查、双模式、原生工具/审批/沙箱、客户端和 Loader 生命周期测试。
+- `scripts/`：构建、打包及同版本测试运行时提取。
+- `lib/`：生成的原生客户端 bundle，被 Git 忽略，但安装包必须包含。
+- `deliverables/`：安装包、源码压缩包和本机验证记录，被 Git 忽略。
+- `runtime-test/`：同版本 Desktop 测试依赖，被 Git 忽略。
+- `tmp/`：调查资料、一次性探测工具和可删除的隔离测试目录，被 Git 忽略。
 
 ## 构建与测试
 
-在项目根目录执行（Node 24.21 或兼容版本）：
+在项目根执行（Node 24.21 或兼容版本）：
 
 ```powershell
 node scripts/build.mjs
 node --import ./test/runtime-loader.mjs --test --test-isolation=none 'test/*.test.mjs'
 ```
 
-客户端构建不安装依赖，直接使用宿主提供的 React。测试没有真实模型请求，默认使用 runtime-test/dsh/node_modules 中提取的 Desktop 0.2.2-rc.1 依赖。首次准备测试缓存：
+构建不安装依赖，浏览器使用宿主 React。测试不发真实模型请求，默认加载 `runtime-test/dsh/node_modules` 中的 Desktop 0.2.2-rc.1。首次准备缓存：
 
 ```powershell
 python scripts/extract-test-runtime.py
 ```
 
-提取脚本默认读取本机 Desktop 安装 ASAR。也可设置 DSH_TEST_RUNTIME 为包含同版本 node_modules 的 dsh 运行时目录。缓存不进入 Git，原有依赖无需迁移进 tmp。
+提取脚本默认读取本机 Desktop 安装 ASAR，也可设置 `DSH_TEST_RUNTIME` 为包含同版本 `node_modules` 的 dsh 运行时目录。
 
-## 打包
+工作区测试使用真实原生工具定义和原生审批服务；真实文件测试在项目 `tmp/` 下生成独立目录，验证工作区外写入拒绝、仅一次模型提权写入以及随后仍然拒绝。不要把模拟“工作区外目标”放进平台临时目录，因为原生沙箱本来允许其临时根。路径解析竞态、取消、授权变更、`never`、PTC token 和审批审计均需保留回归覆盖。
 
-先构建客户端，再打包：
+`native-compatibility` 固定同版本完整 ToolSchema 的 SHA-256，并固定每个 agent 的首次兼容定义身份。它用于保守兼容回退，不认证 Host 插件实现。升级宿主、原生工具配置或 Schema 时，先验证真实执行/沙箱链路再更新兼容表；不要只更新 hash 以绕过回退。
+
+## 打包和安装
 
 ```powershell
 node scripts/build.mjs
 python scripts/package-deliverables.py
 ```
 
-输出位于 deliverables/。打包仅收集明确列出的项目文件，不收集 tmp、运行时缓存或 Git 数据。已有正式版本安装包不覆盖；同版本重建输出 -local.tgz，正式发布应先递增版本。
+当前源码版本 `0.3.0`。输出在 `deliverables/`，只包含显式列出的源码和生成物，不包含运行时缓存、临时文件或 Git 数据。正式版本安装包已有时不覆盖，同版本重建输出 `-local.tgz`。正式发布先递增版本。
 
-Git 不跟踪 lib，但它是安装包所需的生成物。新的源码检出应先执行构建，再打包。
+源码 ZIP 包含测试与开发说明；安装 TGZ 包含原生客户端构建。新检出先构建再打包。安装必须使用宿主插件管理器，不能手工改 profile composition 或运行 profile 包管理器。管理器返回 `application: applied` 才表示本次变更已经应用；需要刷新现有 Desktop 页面读取新客户端，不要启动替代服务器冒充验证。
 
-## 当前安装路径
+安装后核实版本、已启用 entry、Config 默认 `workspaceEscalation: ask` 和 `preciseDeletion: true`，并检查已有 `auto-review-desktop` 完全访问身份仍保留。界面截图/真实页面未取得时明确记录验证限制，不把 VM 组件测试称为实际渲染验证。
 
-源码当前版本为 0.2.2，安装包由打包脚本生成。历史安装包保留原位。只有通过插件管理器安装新包后，Desktop 才会使用新版本的默认精确删除保护设置；源码修改和构建不会自动替换已安装版本。
+## 提交
 
-## 首次提交
-
-设置你希望使用的作者身份后执行：
-
-```powershell
-git config user.name "你的姓名"
-git config user.email "你的邮箱"
-git commit -m "Initial import of desktop auto-review plugin"
-```
+提交前运行完整测试、构建以及 `git diff --check`。只提交项目源码、测试和说明；生成包、运行时缓存及本机 profile 不进入 Git。提交说明应覆盖两个权限标签和单次工作区提权行为。版本升级不自动授权 Git 推送。
