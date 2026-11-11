@@ -1,7 +1,8 @@
 import test, {after} from 'node:test';
 import assert from 'node:assert/strict';
 import {win32} from 'node:path';
-import {captureDelegatedPolicyOverrides,appendDelegatedPolicyOverrides} from '@deepseek-ai/dsh-subagent';
+import {readFile} from 'node:fs/promises';
+import {captureDelegatedPolicyOverrides,appendDelegatedPolicyOverrides,snapshotSubagentDescriptor,SUBAGENT_DESCRIPTOR_VERSION} from '@deepseek-ai/dsh-subagent';
 import {createReviewGate} from '../src/gate.js';
 import {createHumanApprovalGuard} from '../src/human-approval.js';
 import {createDelegationPolicy} from '../src/delegation.js';
@@ -92,7 +93,7 @@ test('native creation closure inherits review before child work and only the chi
     assert.equal(spec.provider,'spawn');assert.equal(spec.request.agentOptions,undefined);
     child=setup('custom',{operation:'outside-action'});child.agent.id='actual-child';child.session.id='actual-child';
     child.events.length=0;child.nodes.length=0;child.session.header={origin:'subagent',parentSession:f.agent.id,cwd:'C:\\project'};
-    child.add('subagent/descriptor',{version:1,provider:'spawn',mode:'continuable',label:'test'});
+    child.add('subagent/descriptor',snapshotSubagentDescriptor({provider:spec.provider,mode:'continuable',label:'test'}));
     f.agents.set(child.agent.id,child.agent);f.owners.set(child.agent.id,f.agent);
     appendDelegatedPolicyOverrides(child.session,captureDelegatedPolicyOverrides(f.agent));
     delegation.created({agent:child.agent,source:'startup'});
@@ -115,18 +116,53 @@ test('native creation closure inherits review before child work and only the chi
 });
 
 test('native creation binding is checked on the actual child descriptor before input can run',async()=>{
-  for(const descriptor of [{version:1,provider:'custom',mode:'continuable'},{version:1,provider:'spawn',mode:'oneshot'},{version:2,provider:'spawn',mode:'continuable'}]) {
+  const base=snapshotSubagentDescriptor({provider:'spawn',mode:'continuable',label:'Binding test'});
+  for(const descriptor of [{...base,provider:'custom'},{...base,mode:'one-shot'},{...base,version:SUBAGENT_DESCRIPTOR_VERSION+1},
+    {...base,version:1},{...base,label:undefined},{...base,unrecognized:true}]) {
     const f=setup();const delegation=createDelegationPolicy(f.ctx,f.readConfig);
     await delegation.execute(f.exec,async()=>{
       const events=[{type:'subagent/descriptor',data:descriptor,seq:0}];
       const session={id:'binding-child',header:{origin:'subagent',parentSession:f.agent.id},snapshotEvents:()=>events.slice(),
         ownEvents:()=>events.slice(),append(type,data){events.push({type,data,seq:events.length});}};
       const child={id:session.id,session};f.agents.set(child.id,child);f.owners.set(child.id,f.agent);
-      assert.throws(()=>delegation.created({agent:child,source:'startup'}),/unsupported native delegation backend binding/);
+      assert.throws(()=>delegation.created({agent:child,source:'startup'}),/unsupported native delegation backend binding|invalid native delegation descriptor/);
       assert.equal(desktopMode(session),undefined);assert.equal(events.findLast(event=>event.type==='approval/policy').data.policy,'never');
     });
     delegation.close();
   }
+});
+
+test('observed failed spawn and fork descriptors now inherit before the child input barrier',async()=>{
+  const observed=JSON.parse(await readFile(new URL('./fixtures/observed-subagent-descriptors.json',import.meta.url),'utf8'));
+  for(const descriptor of observed.descriptors) {
+    const name=descriptor.provider==='fork'?'subagent_fork':'subagent';const f=setup(name);
+    const delegation=createDelegationPolicy(f.ctx,f.readConfig);let inputReleased=false;
+    await delegation.execute(f.exec,async()=>{
+      const seed=descriptor.provider==='fork'?[{seq:0,type:'subagent/descriptor',data:snapshotSubagentDescriptor({mode:'continuable',provider:'ancestor',label:'Historical descriptor'})}]:[];
+      const events=[...seed];const session={id:'observed-child',inheritedEventCount:seed.length,header:{origin:'subagent',parentSession:f.agent.id},
+        snapshotEvents:()=>events.slice(),ownEvents:()=>events.slice(seed.length),append(type,data){events.push({type,data,seq:events.length});}};
+      session.append('subagent/descriptor',structuredClone(descriptor));appendDelegatedPolicyOverrides(session,captureDelegatedPolicyOverrides(f.agent));
+      const child={id:session.id,session};f.agents.set(child.id,child);f.owners.set(child.id,f.agent);
+      assert.equal(inputReleased,false);delegation.created({agent:child,source:'startup'});
+      assert.equal(desktopMode(session),'workspace');assert.equal(events.findLast(e=>e.type==='approval/policy').data.policy,'ask');
+      assert.equal(events.findLast(e=>e.type==='sandbox/mode').data.mode,'workspace-write');inputReleased=true;
+    });
+    assert.equal(inputReleased,true);delegation.close();
+  }
+});
+
+test('a later descriptor cannot replace an unsupported first own descriptor',async()=>{
+  const f=setup();const delegation=createDelegationPolicy(f.ctx,f.readConfig);
+  await delegation.execute(f.exec,async()=>{
+    const first=snapshotSubagentDescriptor({provider:'custom',mode:'continuable',label:'First own identity'});
+    const replacement=snapshotSubagentDescriptor({provider:'spawn',mode:'continuable',label:'Attempted rewrite'});
+    const events=[first,replacement].map((data,seq)=>({type:'subagent/descriptor',data,seq}));
+    const session={id:'rewritten-child',header:{origin:'subagent',parentSession:f.agent.id},snapshotEvents:()=>events.slice(),ownEvents:()=>events.slice(),
+      append(type,data){events.push({type,data,seq:events.length});}};
+    const child={id:session.id,session};f.agents.set(child.id,child);f.owners.set(child.id,f.agent);
+    assert.throws(()=>delegation.created({agent:child,source:'startup'}),/unsupported native delegation backend binding/);
+    assert.equal(desktopMode(session),undefined);assert.equal(events.findLast(e=>e.type==='approval/policy').data.policy,'never');
+  });delegation.close();
 });
 
 test('full-access mode still reviews native creation and prompt context is conditional and route-accurate',async()=>{

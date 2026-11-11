@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { AsyncResource } from 'node:async_hooks';
 import { Context } from '@deepseek-ai/cordis';
 import { AgentRegistry } from '@deepseek-ai/dsh-agent';
-import { captureDelegatedPolicyOverrides, appendDelegatedPolicyOverrides } from '@deepseek-ai/dsh-subagent';
+import { captureDelegatedPolicyOverrides, appendDelegatedPolicyOverrides, snapshotSubagentDescriptor } from '@deepseek-ai/dsh-subagent';
 import { PermissionPresetService } from '@deepseek-ai/dsh-permission-presets';
 import * as spawn from '@deepseek-ai/dsh-subagent-spawn-in-process';
 import * as fork from '@deepseek-ai/dsh-subagent-fork-in-process';
@@ -37,7 +37,7 @@ function harness() {
   }
   function child(parent,seed=[]) {
     const value=agent(null,'ask',parent,seed);
-    value.session.append('subagent/descriptor',{version:1,mode:'continuable',provider:'spawn',label:'test'});
+    value.session.append('subagent/descriptor',snapshotSubagentDescriptor({mode:'continuable',provider:'spawn',label:'test'}));
     appendDelegatedPolicyOverrides(value.session,captureDelegatedPolicyOverrides(parent));
     return value;
   }

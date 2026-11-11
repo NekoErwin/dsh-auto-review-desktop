@@ -1,0 +1,25 @@
+{
+  "runtime": "0.2.2-rc.1",
+  "sourceSession": "sanitized-regression-fixture",
+  "sourceEventSeq": 1,
+  "descriptors": [
+    {
+      "version": 3,
+      "mode": "continuable",
+      "provider": "spawn",
+      "label": "检查子代理权限继承",
+      "agentProvider": "fixture-provider",
+      "agentModel": "fixture-model",
+      "agentReasoningEffort": "high"
+    },
+    {
+      "version": 3,
+      "mode": "continuable",
+      "provider": "fork",
+      "label": "验证 fork 子代理继承",
+      "agentProvider": "fixture-provider",
+      "agentModel": "fixture-model",
+      "agentReasoningEffort": "high"
+    }
+  ]
+}

@@ -3,6 +3,7 @@ import { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy';
 import { setApprovalPolicy } from '@deepseek-ai/dsh-user-approval';
 import { desktopMode, DESKTOP_PRESET, WORKSPACE_PRESET } from './preset.js';
 import { nativeCompatible } from './native-compatibility.js';
+import { foldSubagentDescriptor } from '@deepseek-ai/dsh-subagent';
 
 const ENHANCED=new Set([DESKTOP_PRESET,WORKSPACE_PRESET]);
 const delegated=session=>session.header?.origin==='subagent' && typeof session.header.parentSession==='string';
@@ -78,8 +79,10 @@ export function createDelegationPolicy(ctx,readConfig) {
         return;
       }
       if(captured.expectedProvider) {
-        const descriptor=events.findLast(event=>event.type==='subagent/descriptor')?.data;
-        if(descriptor?.version!==1 || descriptor.mode!=='continuable' || descriptor.provider!==captured.expectedProvider)
+        let descriptor;
+        try {descriptor=foldSubagentDescriptor(events);}
+        catch {quarantine(session,'invalid native delegation descriptor');}
+        if(descriptor?.mode!=='continuable' || descriptor.provider!==captured.expectedProvider)
           quarantine(session,'unsupported native delegation backend binding');
       }
       const sandbox=captured.mode==='full'?'danger-full-access':'workspace-write';
