@@ -40,7 +40,7 @@ function propsOf(plugin) {
 test('native bundle uses only host React and registers a settings menu contribution', () => {
   const { plugin, definition } = boot();
   assert.equal(definition.id, 'dsh-auto-review-desktop');
-  assert.deepEqual(Array.from(plugin.inject), ['slots', 'locale', 'configForms', 'modelDirectories', 'connection']);
+  assert.deepEqual(Array.from(plugin.inject), ['slots', 'locale', 'configForms', 'modelDirectories', 'connection', 'uiConversation']);
   let registered;
   const context = { effect: fn => fn(), locale: { register: () => () => {}, bind: () => key => key },
     configForms: { whileServed(names, fn) { assert.deepEqual(Array.from(names), ['auto-review-desktop']); return fn(); } },

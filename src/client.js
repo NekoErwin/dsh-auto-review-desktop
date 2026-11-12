@@ -61,6 +61,12 @@ window.__ModuleLoader__.load({
       usageUnknown: 'Unknown', usageAttempts: 'Review attempts', usageAllows: 'Reviewer allows', usageDenies: 'Reviewer denies', usageFailures: 'Failed', usageCancelled: 'Cancelled',
       usageInput: 'Input tokens', usageOutput: 'Output tokens', usageCache: 'Cache-read tokens', usageReported: 'Attempts reporting usage',
       usageNote: 'Each token total sums only attempts that reported that field and may be partial. Unreported fields are unknown. Reasoning may already be included in output tokens and must not be added again. Reviewer allows/denies describe model verdicts; tools must still pass other permission checks.',
+      review_reviewing: 'Reviewing action…', review_allowed: 'Model allowed', review_denied: 'Auto review denied this action', review_failed: 'Auto review failed', review_interrupted: 'Review interrupted',
+      reviewNoReason: 'The reviewer did not provide a reason.', reviewHumanFallback: 'Sent for human approval; the model denial remains recorded.', reviewAllowNote: 'Model verdict only; execution remains subject to other checks.',
+      reviewTab: 'Review trace', reviewInspect: 'Inspect call', reviewHistory: 'Automatic reviews', reviewHistoryHelp: 'Per-call reviewer verdicts and final gate results. Expand a record for model, risk, reason, timing, retries and reported usage. Reasons are the returned decision text, not hidden model reasoning.',
+      reviewHistoryLoading: 'Loading review history…', reviewHistoryEmpty: 'No recorded model reviews for this session. Workspace exemptions and human-only approvals do not create model reviews. Reviews before this version are unavailable.',
+      reviewFilter: 'Filter tool or call ID', reviewOriginalCall: 'Root call ID', reviewGate: 'Final review gate', reviewGatePending: 'Pending', reviewGate_allow: 'Passed review gate', reviewGate_deny: 'Blocked', reviewGate_ask: 'Human approval requested', reviewGate_cancel: 'Cancelled',
+      reviewLoadFailed: 'Review display could not connect. No conclusion can be inferred.', reviewReload: 'Reconnect', reviewMemoryOnly: 'History storage is unavailable; records may be limited to this Host run.',
       usageAuditUnavailable: 'Audit storage is unavailable. These in-memory counts still cover this Host run.', usageStopped: 'The review service is not running.',
     };
     const zh = {
@@ -114,6 +120,12 @@ window.__ModuleLoader__.load({
       usageUnknown: '未知', usageAttempts: '审查尝试', usageAllows: '模型允许', usageDenies: '模型拒绝', usageFailures: '失败', usageCancelled: '取消',
       usageInput: '输入 token', usageOutput: '输出 token', usageCache: '缓存读取 token', usageReported: '已报告用量的尝试',
       usageNote: '各项 token 仅汇总报告了该字段的尝试，可能只覆盖部分审查；未报告的字段未知。推理 token 可能已计入输出 token，不能重复相加。模型允许／拒绝仅表示审查模型的判定，实际工具仍须通过其他权限检查。',
+      review_reviewing: '正在审查操作…', review_allowed: '模型允许', review_denied: '自动审查拒绝了此操作', review_failed: '自动审查失败', review_interrupted: '审查已中断',
+      reviewNoReason: '审查模型未提供拒绝理由。', reviewHumanFallback: '已转交人工审批，模型的拒绝结论仍保留。', reviewAllowNote: '仅表示模型判定允许，执行仍须通过其他检查。',
+      reviewTab: '审查轨迹', reviewInspect: '查看调用', reviewHistory: '自动审查记录', reviewHistoryHelp: '逐调用展示模型结论和最终审查门结果。展开记录可查看模型、风险、理由、耗时、重试及已报告用量。理由是模型返回的判定文本，不含隐藏推理。',
+      reviewHistoryLoading: '正在读取审查记录…', reviewHistoryEmpty: '此会话没有已记录的模型审查。工作区免审及仅人工审批不会产生模型审查记录；升级前的审查无法补录。',
+      reviewFilter: '筛选工具或调用 ID', reviewOriginalCall: '根调用 ID', reviewGate: '最终审查门结果', reviewGatePending: '待完成', reviewGate_allow: '通过审查门', reviewGate_deny: '已阻断', reviewGate_ask: '已请求人工审批', reviewGate_cancel: '已取消',
+      reviewLoadFailed: '审查展示连接失败，不能据此推断审查结论。', reviewReload: '重新连接', reviewMemoryOnly: '历史存储不可用，记录可能仅覆盖本次服务运行。',
       usageAuditUnavailable: '审计存储当前不可用，仍显示本次运行的内存计数。', usageStopped: '审查服务当前未运行。',
     };
 
@@ -184,6 +196,14 @@ window.__ModuleLoader__.load({
 .ar-child-approvals{box-sizing:border-box;width:calc(100% - 32px);max-width:var(--dsh-chat-content-width);margin:6px auto;padding:12px;border:1px solid var(--dsw-alias-state-warn-secondary);border-radius:var(--dsw-radius-lg);background:var(--dsw-specific-input-major);color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px}
 .ar-child-approvals h3{font-size:14px;margin:0 0 6px}.ar-child-approvals p{margin:4px 0}.ar-child-approvals .ar-help{color:var(--dsw-alias-label-tertiary);font-size:12px}.ar-child-approvals ol{margin:8px 0 0;padding:0;list-style:none;max-height:340px;overflow-y:auto}.ar-child-approvals li{border-top:1px solid var(--dsw-alias-border-l2);padding:10px 0}.ar-child-approvals code{overflow-wrap:anywhere}.ar-child-approvals summary{cursor:pointer;margin:6px 0}.ar-child-approvals pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto;padding:8px;background:var(--dsw-alias-bg-layer-2);border-radius:var(--dsw-radius-md);font:12px/18px var(--ds-font-family-code,monospace)}
 .ar-child-approvals .ar-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.ar-child-approvals button{font:inherit;padding:5px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);background:var(--dsw-specific-input-major);color:var(--dsw-alias-label-primary);cursor:pointer}.ar-child-approvals .ar-primary{background:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-oncolor)}.ar-child-approvals button:disabled{opacity:.5;cursor:default}.ar-child-approvals button:focus-visible,.ar-child-approvals summary:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}.ar-child-approvals .ar-error{color:var(--dsw-alias-state-error-primary)}\n.ar-approval-detail{display:flex;flex-direction:column;gap:6px;min-width:0}.ar-approval-detail p{margin:0}.ar-approval-detail pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;font-family:var(--ds-font-family-code);font-size:12px;line-height:1.5}.ar-approval-detail button{align-self:flex-start}
+.ar-review-connection{width:calc(100% - 32px);max-width:var(--dsh-chat-content-width);margin:0 auto;font-size:12px;line-height:18px}
+.ar-review-standalone{flex:1;max-height:none;min-height:0;height:100%;box-sizing:border-box;overflow:auto}
+.ar-review-notice{display:flex;align-items:flex-start;gap:8px;min-width:0;margin:5px 0 8px;font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;color:var(--dsw-alias-label-secondary)}
+.ar-review-dot{width:6px;height:6px;flex:none;margin-top:7px;border-radius:50%;background:var(--dsw-alias-state-idle-primary)}
+.ar-review-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:2px}.ar-review-title{font-weight:500}.ar-review-reason{white-space:pre-wrap;overflow-wrap:anywhere}.ar-review-hint{font-size:12px;color:var(--dsw-alias-label-secondary)}
+.ar-review-error{color:var(--dsw-alias-state-error-primary)}.ar-review-error .ar-review-dot{background:var(--dsw-alias-state-error-primary)}.ar-review-notice[data-review-state=allowed] .ar-review-dot{background:var(--dsw-alias-state-success-primary)}
+.ar-review-code{flex:none;max-width:35%;overflow-wrap:anywhere;font-size:11px}.ar-review-link{font:inherit;font-size:12px;border:0;background:none;color:var(--dsw-alias-label-secondary);cursor:pointer;padding:0;text-decoration:underline}.ar-review-link:focus-visible,.ar-review-trajectory summary:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
+.ar-review-trajectory{flex:1;max-height:none;overflow:auto;border-bottom:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px}.ar-review-trajectory>summary{padding:8px 16px;cursor:pointer}.ar-review-ledger{padding:0 16px 12px}.ar-review-ledger p{margin:6px 0;color:var(--dsw-alias-label-secondary)}.ar-review-ledger input{box-sizing:border-box;width:100%;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;padding:6px 8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit}.ar-review-record{border-top:1px solid var(--dsw-alias-border-l1);padding:6px 0}.ar-review-record summary{cursor:pointer;overflow-wrap:anywhere}.ar-review-record pre{white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;max-height:300px;background:var(--dsw-alias-bg-layer-2);padding:8px;border-radius:6px;font:12px/18px monospace}.ar-review-warning{color:var(--dsw-alias-state-warn-primary)}
 `;
       document.head.appendChild(style);
       return () => style.remove();
@@ -697,6 +717,124 @@ window.__ModuleLoader__.load({
       }, 'auto-review-desktop: native child approval summary'));
     }
 
+    // Display-only history; native renderers and permission decisions retain ownership.
+    function createHistoryStore(connection, sessionId) {
+      let snapshot = { records: [], loading: true, error: null, available: true };
+      let controller, generation = 0;
+      const listeners = new Set();
+      const publish = next => { snapshot = next; for (const listener of listeners) listener(); };
+      const start = () => {
+        controller?.abort(); controller = new AbortController();
+        const signal = controller.signal, current = ++generation;
+        void (async () => {
+          let revision;
+          try {
+            while (!signal.aborted && current === generation) {
+              const response = await connection.rpc.call('/auto-review-desktop', revision === undefined ? 'history' : 'watch-history', { sessionId, ...(revision === undefined ? {} : { revision }) }, signal);
+              if (signal.aborted || current !== generation) return;
+              if (!response.ok || !Array.isArray(response.value?.records) || !Number.isSafeInteger(response.value.revision)) throw new Error('Review history unavailable');
+              const changed = revision !== response.value.revision || snapshot.loading || snapshot.error || snapshot.available !== response.value.available;
+              revision = response.value.revision;
+              if (changed) publish({ records: response.value.records, available: response.value.available, loading: false, error: null });
+              if (response.value.closed) return;
+            }
+          } catch {
+            if (!signal.aborted && current === generation) publish({ ...snapshot, loading: false, error: true });
+          }
+        })();
+      };
+      return {
+        getSnapshot: () => snapshot,
+        subscribe(listener) { listeners.add(listener); if (listeners.size === 1) start(); return () => { listeners.delete(listener); if (!listeners.size) { generation++; controller?.abort(); } }; },
+        retry: start,
+        dispose() { generation++; controller?.abort(); listeners.clear(); },
+      };
+    }
+    function reviewPresentation(row) {
+      const attempt = row.attempts?.at(-1), verdict = attempt?.verdict;
+      const denial = row.attempts?.findLast(item => item.verdict?.decision === 'deny')?.verdict;
+      const state = denial ? 'denied' : row.status === 'reviewing' ? 'reviewing' : row.status === 'failed' ? 'failed' : row.status === 'cancelled' || row.status === 'interrupted' ? 'interrupted' : verdict?.decision === 'allow' ? 'allowed' : 'failed';
+      return { state, error: Boolean(denial) || state === 'failed', reason: denial?.reason, verdict };
+    }
+    function ReviewNotice({ row, t, inspectCall }) {
+      const display = reviewPresentation(row);
+      return h('div', { className: `ar-review-notice${display.error ? ' ar-review-error' : ''}`, role: display.error ? 'alert' : 'status', 'data-review-call': row.callId, 'data-review-state': display.state },
+        h('span', { className: 'ar-review-dot', 'aria-hidden': true }),
+        h('div', { className: 'ar-review-copy' },
+          h('span', { className: 'ar-review-title' }, t(`review_${display.state}`), ' · ', row.tool),
+          display.reason ? h('span', { className: 'ar-review-reason' }, display.reason) : display.state === 'denied' ? h('span', { className: 'ar-review-reason' }, t('reviewNoReason')) : null,
+          row.gate === 'ask' ? h('span', { className: 'ar-review-reason' }, t('reviewHumanFallback')) : null,
+          display.state === 'allowed' ? h('span', { className: 'ar-review-hint' }, t('reviewAllowNote')) : null),
+        display.error ? h('code', { className: 'ar-review-code' }, display.state === 'denied' ? 'AUTO_REVIEW_DENIED' : row.code ?? 'AUTO_REVIEW_FAILED') : null,
+        inspectCall ? h('button', { type: 'button', className: 'ar-review-link', onClick: () => inspectCall(row.callId), 'aria-label': `${t('reviewInspect')} ${row.tool} ${row.callId}` }, t('reviewInspect')) : null);
+    }
+    function ReviewHistoryStatus({ snapshot, store, t }) {
+      return h(React.Fragment, null,
+        snapshot.error ? h('p', { className: 'ar-review-warning', role: 'status' }, t('reviewLoadFailed'), ' ', h('button', { type: 'button', className: 'ar-review-link', onClick: store.retry }, t('reviewReload'))) : null,
+        snapshot.available === false ? h('p', { className: 'ar-review-warning' }, t('reviewMemoryOnly')) : null);
+    }
+    function ToolReviewRows({ snapshot, root, t, inspectCall }) {
+      if (!root) return null;
+      const rows = snapshot.records.filter(row => row.rootCallId === root.callId);
+      return rows.map(row => h(ReviewNotice, { key: row.id, row, t, inspectCall }));
+    }
+    function ReviewTrajectory({ snapshot, store, t, inspectCall }) {
+      const [query, setQuery] = useState('');
+      const rows = snapshot.records.filter(row => `${row.tool} ${row.callId} ${row.rootCallId}`.toLowerCase().includes(query.toLowerCase()));
+      return h('details', { className: 'ar-review-trajectory ar-review-standalone', open: true },
+        h('summary', null, t('reviewHistory'), ` (${snapshot.records.length})`),
+        h('div', { className: 'ar-review-ledger' },
+          h('p', null, t('reviewHistoryHelp')),
+          h(ReviewHistoryStatus, { snapshot, store, t }),
+          snapshot.loading ? h('p', { role: 'status' }, t('reviewHistoryLoading')) : null,
+          snapshot.records.length ? h('input', { type: 'search', value: query, placeholder: t('reviewFilter'), 'aria-label': t('reviewFilter'), onChange: event => setQuery(event.target.value) }) : h('p', null, t('reviewHistoryEmpty')),
+          rows.map(row => h('details', { key: row.id, className: 'ar-review-record', 'data-review-record': row.id },
+            h('summary', null, t(`review_${reviewPresentation(row).state}`), ' · ', row.tool, ' · ', row.callId),
+            h('p', null, t('reviewOriginalCall'), ': ', h('code', null, row.rootCallId)),
+            h('p', null, t('reviewGate'), ': ', row.gate ? t(`reviewGate_${row.gate}`) : t('reviewGatePending')),
+            inspectCall ? h('button', { type: 'button', className: 'ar-review-link', onClick: () => inspectCall(row.callId) }, t('reviewInspect')) : null,
+            h('pre', null, JSON.stringify(row, null, 2))))));
+    }
+    // Project existing root tool-call events into independent Chat rows. The
+    // session log stays unchanged; the view only joins its call ID to history.
+    const reviewCallDefinition = {
+      kind: 'auto-review-call-status', target: 'chat',
+      match: { 'tool/call': event => ({ id: String(event.data.callId), role: 'start' }) },
+      start: (_context, match) => ({ seq: match.event.seq, root: { callId: String(match.event.data.callId) } }),
+      update: context => context.state,
+      buildViewNode: context => context.state === undefined ? null : {
+        key: context.key, kind: 'auto-review-call-status', id: context.id, target: 'chat',
+        anchorSeq: context.state.seq + 0.01,
+        location: context.start?.location ?? context.matches[0]?.location ?? { kind: 'unresolved' },
+        visibility: 'visible', data: context.state,
+      },
+    };
+    function registerReviewHistory(ctx) {
+      return ctx.inject(['connection', 'uiConversation'], scope => scope.effect(() => {
+        const stores = new Map();
+        const storeFor = sessionId => { if (!stores.has(sessionId)) stores.set(sessionId, createHistoryStore(scope.connection, sessionId)); return stores.get(sessionId); };
+        function ChatReview(props) {
+          const store = storeFor(props.sessionId), snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
+          return h(ToolReviewRows, { snapshot, root: props.node.data.root, t: scope.locale.bind(NS), inspectCall: props.inspectCall });
+        }
+        function TrajectoryReview(props) {
+          const store = storeFor(props.sessionId), snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
+          return h(ReviewTrajectory, { snapshot, store, t: scope.locale.bind(NS), inspectCall: props.inspectCall });
+        }
+        function HistoryConnectionStatus(props) {
+          const store = storeFor(props.sessionId), snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
+          if (!snapshot.error && snapshot.available !== false) return null;
+          return h('div', { className: 'ar-review-connection' }, h(ReviewHistoryStatus, { snapshot, store, t: scope.locale.bind(NS) }));
+        }
+        const definition = scope.uiConversation.events.register(reviewCallDefinition);
+        const dock = scope.slots.inject('conversation.composer.dock', () => scope.slots.register({ name: 'conversation.composer.dock', id: 'auto-review-history-status', order: -90, locale: NS }, HistoryConnectionStatus));
+        const chat = scope.slots.inject('conversation.chat.node', () => scope.slots.register({ name: 'conversation.chat.node', key: 'auto-review-call-status', locale: NS }, ChatReview));
+        const trajectory = scope.slots.inject('conversation.view', () => scope.slots.register({ name: 'conversation.view', id: 'auto-review-trajectory', order: 11, locale: NS, label: () => scope.locale.bind(NS)('reviewTab') }, TrajectoryReview));
+        return () => { definition(); dock(); chat(); trajectory(); for (const store of stores.values()) store.dispose(); stores.clear(); };
+      }, 'auto-review-desktop: review history'));
+    }
+
+
     function apply(ctx) {
       ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'auto-review-desktop: settings copy');
       ctx.effect(() => installStyles(), 'auto-review-desktop: settings styles');
@@ -704,6 +842,7 @@ window.__ModuleLoader__.load({
       if (typeof ctx.inject === 'function') {
         ctx.effect(() => registerChildApprovals(ctx), 'auto-review-desktop: child approval presentation');
         ctx.effect(() => registerApprovalDetails(ctx), 'auto-review-desktop: complete native approval details');
+        ctx.effect(() => registerReviewHistory(ctx), 'auto-review-desktop: persisted review presentation');
       }
       const t = ctx.locale.bind(NS);
       ctx.effect(() => ctx.configForms.whileServed(['auto-review-desktop'], () => ctx.slots.inject('settings.section', () => ctx.slots.register({
@@ -713,13 +852,14 @@ window.__ModuleLoader__.load({
     }
     return {
       name: 'dsh-auto-review-desktop',
-      inject: ['slots', 'locale', 'configForms', 'modelDirectories', 'connection'],
+      inject: ['slots', 'locale', 'configForms', 'modelDirectories', 'connection', 'uiConversation'],
       apply,
       // Pure helpers and the components are exported for offline contract tests.
       SettingsSection, UsageCard, draftOf, sameDraft, modelChoices, validateDraft,
       localizePermissionCatalog, decoratePermissionTree, registerPermissionPresentation, permissionDictionaries: { en, zh },
       createApprovalCollector, approvalRoot, readApprovalCall, ChildApprovalSummary, ChildApprovalItem, registerChildApprovals,
       loadApprovalDetail, ApprovalDetailBody, NativeApprovalDetail, registerApprovalDetails,
+      createHistoryStore, reviewPresentation, ReviewNotice, ToolReviewRows, ReviewTrajectory, reviewCallDefinition, registerReviewHistory,
     };
   },
 });

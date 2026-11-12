@@ -2,6 +2,7 @@ import Schema from '@deepseek-ai/schemastery';
 import { createReviewGate } from './gate.js';
 import { DEFAULTS, normalizeConfig, ReviewStats } from './runtime.js';
 import { createAuditJournal } from './audit.js';
+import { createReviewHistory } from './history.js';
 import { registerDesktopPreset } from './preset.js';
 import { createDelegationPolicy } from './delegation.js';
 import { createHumanApprovalGuard } from './human-approval.js';
@@ -34,13 +35,21 @@ export function apply(ctx,config) {
   readConfig();
   const journal=createAuditJournal(ctx.get('profileContext')?.dir,ctx.logger);
   const stats=new ReviewStats(event=>journal.write(event));
-  const runtime=createReviewGate(ctx,readConfig,{stats});
+  const history=createReviewHistory(ctx.get('profileContext')?.dir,ctx.logger);
+  const runtime=createReviewGate(ctx,readConfig,{stats,history});
   const delegation=createDelegationPolicy(ctx,readConfig);
   const human=createHumanApprovalGuard(ctx,readConfig);
   ctx.provide('autoReviewDesktop',runtime);
   ctx.effect(()=>ctx.settings.configure({auto:false}),'auto-review-desktop settings');
   const statusHandler=async(endpoint,_payload,_signal,peer)=>{
     if(peer?.principal?.kind!=='owner')return {ok:false,error:{code:'FORBIDDEN',message:'Owner access required'}};
+    if(endpoint==='history' || endpoint==='watch-history') {
+      const {sessionId,revision}=_payload??{};
+      if(typeof sessionId!=='string' || !sessionId || sessionId.length>256 || (endpoint==='watch-history' && (!Number.isSafeInteger(revision) || revision<0)))
+        return {ok:false,error:{code:'INVALID_INPUT',message:'Invalid history request'}};
+      const value=endpoint==='history'?await history.read(sessionId):await history.watch(sessionId,revision,_signal);
+      return {ok:true,value};
+    }
     if(endpoint!=='status')return {ok:false,error:{code:'NOT_FOUND',message:'Unknown review endpoint'}};
     return {ok:true,value:{totals:stats.view().totals,usageCoverage:stats.view().usageCoverage,running:runtime.accepting,scope:'process',audit:journal.available?'available':'unavailable'}};
   };
@@ -65,7 +74,7 @@ export function apply(ctx,config) {
     yield async()=>{
       human.close();delegation.close();
       try {await runtime.close({applicationShutdown:ctx.root.fiber.state!==2});}
-      finally {await journal.close();}
+      finally {await Promise.all([journal.close(),history.close()]);}
     };
   },'auto-review-desktop lifecycle');
 }

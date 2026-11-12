@@ -9,7 +9,7 @@ import { REVIEW_POLICY, snapshotAutoReview, reviewMessages, readDecision, denied
 import { ReviewError, ReviewBudget, ReviewStats, normalizeConfig, configKey, actionKey, authorizationKey, promptSize, prepareReviewCall, withDeadline, observeUsage, transientFailure } from './runtime.js';
 
 /** Factory seam keeps the installed official policy/snapshot/parser in real tests. */
-export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snapshot=snapshotAutoReview, parse=readDecision}={}) {
+export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snapshot=snapshotAutoReview, parse=readDecision, history}={}) {
   const lifecycle=new AbortController();
   const budget=new ReviewBudget();
   const active=new Set();
@@ -21,6 +21,7 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
     if(!exec.agent || (!exec.parent && exec.name==='run_code') || !isAuto(exec.agent.session)) return next();
     const completion=Promise.withResolvers();active.add(completion.promise);
     const session=exec.agent.session;
+    const display=history?.start(exec);
     const initialMode=desktopMode(session);
     const signal=AbortSignal.any([lifecycle.signal,...exec.signal?[exec.signal]:[]]);
     let c;
@@ -34,7 +35,7 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
     let finalRecorded=false;
     let anyDispatch=false;
     const finish=(decision,code)=>{
-      if(!finalRecorded){finalRecorded=true;stats.gateOutcome({sessionId:String(session.id),tool:exec.name,callId:String(exec.callId),
+      if(!finalRecorded){finalRecorded=true;display?.finish(decision.kind,code);stats.gateOutcome({sessionId:String(session.id),tool:exec.name,callId:String(exec.callId),
         outcome:decision.kind,blockedBeforeDispatch:!anyDispatch,...code?{code}:{} });}
       return decision;
     };
@@ -46,6 +47,10 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
       if(!attemptState || attemptState.recorded)return;
       attemptState.recorded=true;
       if(entry.outcome==='allow' || entry.outcome==='deny')budget.success(attemptState.ticket);else budget.failure(attemptState.ticket);
+      display?.attempt({provider:attemptState.prepared?.config.provider??null,model:attemptState.prepared?.config.model??null,
+        reasoningEffort:attemptState.prepared?.config.reasoningEffort??null,attempt:attemptState.index+1,
+        durationMs:Date.now()-attemptState.start,...attemptState.measurement.usage?{usage:attemptState.measurement.usage}:{},
+        ...attemptState.verdict?{verdict:attemptState.verdict}:{},...entry});
       stats.record({sessionId:String(session.id),tool:exec.name,callId:String(exec.callId),scope:'review-attempt',
         provider:attemptState.prepared?.config.provider??null,model:attemptState.prepared?.config.model??null,
         reasoningEffort:attemptState.prepared?.config.reasoningEffort??null,attempt:attemptState.index+1,
@@ -96,6 +101,7 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
             const stream=prepared.stream(Object.freeze({...prepared.config,system,messages,
               sessionId:session.id,purpose:'auto-review',signal:reviewSignal}));
             decision=await parse(observeUsage(stream,attemptState.measurement,reviewSignal));
+            attemptState.verdict=decision;
             await validateFresh(reviewSignal);
             recordAttempt(attemptState,{outcome:decision.decision,risk:decision.risk});
             return decision;

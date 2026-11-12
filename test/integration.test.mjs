@@ -23,6 +23,10 @@ test('real Cordis mounts and disposes native settings, RPC and an independent ga
   assert.equal(fiber.state,2);assert(presets['auto-review-desktop']);assert.equal(settings,1);assert.equal(typeof rpc,'function');assert(promptContext);assert.equal(promptContext.text({agent:f.agent}), '');
   assert.equal((await rpc('status',{},null,{principal:{kind:'guest'}})).ok,false);
   const view=await rpc('status',{},null,{principal:{kind:'owner'}});assert(view.ok);assert(!('recent'in view.value));assert(!('sessionId'in view.value));
+  assert.equal((await rpc('history',{sessionId:String(f.session.id)},null,{principal:{kind:'guest'}})).ok,false);
+  assert.equal((await rpc('history',{sessionId:'../invalid/path'},null,{principal:{kind:'owner'}})).ok,true); // ID is hashed, never used as a filesystem path.
+  assert.equal((await rpc('history',{sessionId:''},null,{principal:{kind:'owner'}})).ok,false);
+  assert.equal((await rpc('watch-history',{sessionId:'session',revision:-1},null,{principal:{kind:'owner'}})).ok,false);
   const result=await ctx.waterfall('tools/pre-execute',f.exec,async()=>({kind:'allow'}));assert.equal(result.kind,'allow');
   await fiber.restart();assert.equal(fiber.state,2);assert(presets['auto-review-desktop']);assert.equal(settings,1);
   await fiber.dispose();assert.equal(presets['auto-review-desktop'],undefined);assert.equal(settings,0);assert.equal(rpc,undefined);assert.equal(promptContext,undefined);

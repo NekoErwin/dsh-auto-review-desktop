@@ -1,6 +1,6 @@
 {
   "name": "dsh-auto-review-desktop",
-  "version": "0.4.5",
+  "version": "0.4.7",
   "type": "module",
   "description": "Independent DSH Desktop authorization review with bounded execution and native settings",
   "main": "./src/index.js",
@@ -47,6 +47,7 @@
       "platform": "web",
       "inject": [
         "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-settings-models",
         "@deepseek-ai/dsh-client-ui-model-selection",
