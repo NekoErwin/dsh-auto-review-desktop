@@ -4,7 +4,8 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react');
     const { createElement: h, useState, useEffect, useRef, useSyncExternalStore, cloneElement, isValidElement, Children } = React;
-    const { Menu, PermissionIconAutoReviewRegular } = require('@deepseek-ai/dsh-client-ui-primitives');
+    const { Menu, PermissionIconAutoReviewRegular, IconDatabaseOutlineRegular, useAnchoredPosition, useDismissOnOutsidePointer } = require('@deepseek-ai/dsh-client-ui-primitives');
+    const { createPortal } = require('react-dom');
     const NS = 'autoReviewDesktop';
     const FIELDS = ['routeMode', 'provider', 'model', 'reasoningMode', 'reasoningEffort', 'timeoutMs', 'maxOutputTokens', 'maxInputChars', 'maxReviewsPerTurn', 'maxRetries', 'failurePolicy', 'preciseDeletion', 'workspaceEscalation', 'denialPolicy', 'subagentApproval', 'workspaceReads'];
     const DEFAULTS = { routeMode: 'follow', provider: '', model: '', reasoningMode: 'low', reasoningEffort: '', timeoutMs: 60000, maxOutputTokens: 2048, maxInputChars: 120000, maxReviewsPerTurn: 100, maxRetries: 0, failurePolicy: 'deny', preciseDeletion: true, workspaceEscalation: 'ask', denialPolicy: 'deny', subagentApproval: 'inherit', workspaceReads: 'allow' };
@@ -56,18 +57,21 @@ window.__ModuleLoader__.load({
       invalidWorkspaceReads: 'Choose all paths or workspace paths only.',
       approvalDetails: 'Exact action details', approvalTool: 'Tool', approvalCall: 'Call ID', approvalMissing: 'The complete original action could not be retrieved. Do not infer the action from a generic approval reason.', approvalLoading: 'Loading the complete original action…', approvalWithdrawn: 'This approval request has ended.',
       pendingLoad: 'Wait for settings to finish loading.',
-      usageTitle: 'Review usage', usageScope: 'This Host run only · Counts reset when the Host restarts. Loaded once when this page opens; refresh manually for the latest counts.',
-      usageLoading: 'Loading review usage…', usageRefresh: 'Refresh usage', usageFailure: 'Could not load review usage.', usageInvalid: 'The Host returned an unsupported usage response.',
-      usageUnknown: 'Unknown', usageAttempts: 'Review attempts', usageAllows: 'Reviewer allows', usageDenies: 'Reviewer denies', usageFailures: 'Failed', usageCancelled: 'Cancelled',
+      settingsModel: 'Model and reasoning', settingsWorkspace: 'Workspace permissions', settingsDecisions: 'Review and approval policies', settingsProtection: 'Deletion protection',
+      reviewMetadata: 'Review metadata', reviewArgumentsMissing: 'This record has no saved tool arguments.',
+      reviewResult_allowed: 'Passed', reviewResult_denied: 'Denied', reviewResult_failed: 'Failed', reviewResult_reviewing: 'Reviewing', reviewResult_interrupted: 'Failed',
+      usageRecords: 'Reviews', usageTotal: 'Reported total tokens', usageSession: 'Session review statistics', usageCacheWrite: 'Cache-write tokens', usageReasoning: 'Reasoning tokens', usagePartial: 'Partial · {reported}/{attempts} attempts', usageSeparate: 'Review usage is separate from the native Token usage menu. This session only; child sessions have their own statistics.',
+      usageTitle: 'Review usage', usageScope: 'This session only · Summed from saved review records, including retries. Updates automatically.',
+      usageLoading: 'Loading review usage…',
+      usageUnknown: 'Unknown', usageAttempts: 'Review attempts', usageAllows: 'Reviewer allows', usageDenies: 'Reviewer denies', usageFailures: 'Failed', usageCancelled: 'Of these, cancelled',
       usageInput: 'Input tokens', usageOutput: 'Output tokens', usageCache: 'Cache-read tokens', usageReported: 'Attempts reporting usage',
       usageNote: 'Each token total sums only attempts that reported that field and may be partial. Unreported fields are unknown. Reasoning may already be included in output tokens and must not be added again. Reviewer allows/denies describe model verdicts; tools must still pass other permission checks.',
       reviewPassed: 'Review passed', review_reviewing: 'Reviewing action…', review_allowed: 'Model allowed', review_denied: 'Auto review denied this action', review_failed: 'Auto review failed', review_interrupted: 'Review interrupted',
       reviewNoReason: 'The reviewer did not provide a reason.', reviewHumanFallback: 'Sent for human approval; the model denial remains recorded.', reviewAllowNote: 'Model verdict only; execution remains subject to other checks.',
-      reviewTab: 'Review trace', reviewInspect: 'Inspect call', reviewHistory: 'Automatic reviews', reviewHistoryHelp: 'Per-call reviewer verdicts and final gate results. Expand a record for model, risk, reason, timing, retries and reported usage. Reasons are the returned decision text, not hidden model reasoning.',
+      reviewTab: 'Review', reviewInspect: 'Inspect call', reviewHistory: 'Automatic reviews', reviewHistoryHelp: 'Expand a record for complete tool arguments and the review result. Model, timing, retries and usage are under Review metadata.',
       reviewHistoryLoading: 'Loading review history…', reviewHistoryEmpty: 'No recorded model reviews for this session. Workspace exemptions and human-only approvals do not create model reviews. Reviews before this version are unavailable.',
       reviewFilter: 'Filter tool or call ID', reviewOriginalCall: 'Root call ID', reviewGate: 'Final review gate', reviewGatePending: 'Pending', reviewGate_allow: 'Passed review gate', reviewGate_deny: 'Blocked', reviewGate_ask: 'Human approval requested', reviewGate_cancel: 'Cancelled',
       reviewLoadFailed: 'Review display could not connect. No conclusion can be inferred.', reviewReload: 'Reconnect', reviewMemoryOnly: 'History storage is unavailable; records may be limited to this Host run.',
-      usageAuditUnavailable: 'Audit storage is unavailable. These in-memory counts still cover this Host run.', usageStopped: 'The review service is not running.',
     };
     const zh = {
       permissionFullLabel: '自动审查（完全访问）', permissionWorkspaceLabel: '自动审查（工作区）',
@@ -115,18 +119,21 @@ window.__ModuleLoader__.load({
       invalidWorkspaceReads: '请选择全部路径或仅工作区内。',
       approvalDetails: '具体操作详情', approvalTool: '工具', approvalCall: '调用 ID', approvalMissing: '无法取得完整原始操作，请勿根据通用审批理由推测动作。', approvalLoading: '正在读取完整原始操作…', approvalWithdrawn: '此审批请求已结束。',
       pendingLoad: '请等待设置读取完成。',
-      usageTitle: '审查用量', usageScope: '仅统计本次服务运行，服务重启后归零。打开页面时读取一次；可手动刷新查看最新计数。',
-      usageLoading: '正在读取审查用量…', usageRefresh: '刷新用量', usageFailure: '审查用量读取失败。', usageInvalid: '服务端返回了不支持的用量格式。',
-      usageUnknown: '未知', usageAttempts: '审查尝试', usageAllows: '模型允许', usageDenies: '模型拒绝', usageFailures: '失败', usageCancelled: '取消',
+      settingsModel: '模型与推理', settingsWorkspace: '工作区权限', settingsDecisions: '审查与审批策略', settingsProtection: '删除保护',
+      reviewMetadata: '审查元数据', reviewArgumentsMissing: '此记录未保存调用参数。',
+      reviewResult_allowed: '通过', reviewResult_denied: '拒绝', reviewResult_failed: '失败', reviewResult_reviewing: '审查中', reviewResult_interrupted: '失败',
+      usageRecords: '审查记录', usageTotal: '已报告总 token', usageSession: '本会话审查统计', usageCacheWrite: '缓存写入 token', usageReasoning: '推理 token', usagePartial: '部分数据 · {reported}/{attempts} 次尝试', usageSeparate: '审查用量独立于原生“token 用量”。仅统计当前会话，子会话分别统计。',
+      usageTitle: '审查用量', usageScope: '仅当前会话 · 按已保存的审查记录汇总，包含重试，自动更新。',
+      usageLoading: '正在读取审查用量…',
+      usageUnknown: '未知', usageAttempts: '审查尝试', usageAllows: '模型允许', usageDenies: '模型拒绝', usageFailures: '失败', usageCancelled: '其中取消',
       usageInput: '输入 token', usageOutput: '输出 token', usageCache: '缓存读取 token', usageReported: '已报告用量的尝试',
       usageNote: '各项 token 仅汇总报告了该字段的尝试，可能只覆盖部分审查；未报告的字段未知。推理 token 可能已计入输出 token，不能重复相加。模型允许／拒绝仅表示审查模型的判定，实际工具仍须通过其他权限检查。',
       reviewPassed: '审查通过', review_reviewing: '正在审查操作…', review_allowed: '模型允许', review_denied: '自动审查拒绝了此操作', review_failed: '自动审查失败', review_interrupted: '审查已中断',
       reviewNoReason: '审查模型未提供拒绝理由。', reviewHumanFallback: '已转交人工审批，模型的拒绝结论仍保留。', reviewAllowNote: '仅表示模型判定允许，执行仍须通过其他检查。',
-      reviewTab: '审查轨迹', reviewInspect: '查看调用', reviewHistory: '自动审查记录', reviewHistoryHelp: '逐调用展示模型结论和最终审查门结果。展开记录可查看模型、风险、理由、耗时、重试及已报告用量。理由是模型返回的判定文本，不含隐藏推理。',
+      reviewTab: '审查', reviewInspect: '查看调用', reviewHistory: '自动审查记录', reviewHistoryHelp: '展开记录查看完整工具参数和审查结果；模型、耗时、重试及用量收在“审查元数据”中。',
       reviewHistoryLoading: '正在读取审查记录…', reviewHistoryEmpty: '此会话没有已记录的模型审查。工作区免审及仅人工审批不会产生模型审查记录；升级前的审查无法补录。',
       reviewFilter: '筛选工具或调用 ID', reviewOriginalCall: '根调用 ID', reviewGate: '最终审查门结果', reviewGatePending: '待完成', reviewGate_allow: '通过审查门', reviewGate_deny: '已阻断', reviewGate_ask: '已请求人工审批', reviewGate_cancel: '已取消',
       reviewLoadFailed: '审查展示连接失败，不能据此推断审查结论。', reviewReload: '重新连接', reviewMemoryOnly: '历史存储不可用，记录可能仅覆盖本次服务运行。',
-      usageAuditUnavailable: '审计存储当前不可用，仍显示本次运行的内存计数。', usageStopped: '审查服务当前未运行。',
     };
 
     function draftOf(value) {
@@ -185,9 +192,6 @@ window.__ModuleLoader__.load({
 [data-auto-review-settings] button:disabled,[data-auto-review-settings] input:disabled,[data-auto-review-settings] select:disabled{opacity:.5;cursor:default}
 [data-auto-review-settings] .ar-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 [data-auto-review-settings] .ar-actions h3{margin:0;flex:1}
-[data-auto-review-settings] .ar-usage-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0}
-[data-auto-review-settings] .ar-usage-grid dt{color:var(--dsw-alias-label-tertiary);font-size:12px}
-[data-auto-review-settings] .ar-usage-grid dd{margin:2px 0 0;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 [data-auto-review-settings] .ar-error{color:var(--dsw-alias-state-error-primary);font-size:12px;overflow-wrap:anywhere}
 [data-auto-review-settings] .ar-warning{color:var(--dsw-alias-state-warn-label);font-size:12px;overflow-wrap:anywhere}
 [data-auto-review-settings] .ar-success{color:var(--dsw-alias-state-success-primary);font-size:12px}
@@ -205,59 +209,38 @@ window.__ModuleLoader__.load({
 .ar-review-code{flex:none;max-width:35%;overflow-wrap:anywhere;font-size:11px}.ar-review-link{font:inherit;font-size:12px;border:0;background:none;color:var(--dsw-alias-label-secondary);cursor:pointer;padding:0;text-decoration:underline}.ar-review-link:focus-visible,.ar-review-trajectory summary:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
 .ar-review-approved{align-items:center;gap:6px;margin:0 0 2px 22px;min-height:18px;font-size:11px;line-height:16px}.ar-review-approved .ar-review-dot{width:5px;height:5px;margin-top:0}.ar-review-approved .ar-review-title{font-weight:400;white-space:nowrap}.ar-review-approved .ar-review-link{margin-inline-start:auto;flex:none;white-space:nowrap;font-size:11px;line-height:16px;text-decoration:none}.ar-review-approved .ar-review-link:hover{text-decoration:underline}
 .ar-review-trajectory{flex:1;max-height:none;overflow:auto;border-bottom:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px}.ar-review-trajectory>summary{padding:8px 16px;cursor:pointer}.ar-review-ledger{padding:0 16px 12px}.ar-review-ledger p{margin:6px 0;color:var(--dsw-alias-label-secondary)}.ar-review-ledger input{box-sizing:border-box;width:100%;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;padding:6px 8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit}.ar-review-record{border-top:1px solid var(--dsw-alias-border-l1);padding:6px 0}.ar-review-record summary{cursor:pointer;overflow-wrap:anywhere}.ar-review-record pre{white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;max-height:300px;background:var(--dsw-alias-bg-layer-2);padding:8px;border-radius:6px;font:12px/18px monospace}.ar-review-warning{color:var(--dsw-alias-state-warn-primary)}
+.ar-session-usage{border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:12px;margin:12px 0}.ar-session-usage h3{margin:0 0 6px;font-size:13px;font-weight:500}.ar-session-usage p{margin:6px 0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}.ar-usage-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:12px 0}.ar-usage-grid dt{font-size:12px;color:var(--dsw-alias-label-tertiary)}.ar-usage-grid dd{margin:2px 0 0;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.ar-usage-grid small{display:block;font-size:11px;color:var(--dsw-alias-label-tertiary)}
+.ar-review-ledger h2{margin:14px 0 8px;font-size:15px;font-weight:500}.ar-review-record>summary{padding:6px 0}.ar-review-record-heading{display:inline-flex;align-items:baseline;gap:12px;width:calc(100% - 20px);vertical-align:top}.ar-review-result{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.ar-review-result .ar-review-dot{margin:0;background:var(--dsw-alias-state-warn-primary,#d9a41b)}.ar-review-record[data-review-state=allowed] .ar-review-result .ar-review-dot{background:var(--dsw-alias-state-success-primary,#2ba66f)}.ar-review-record[data-review-state=denied] .ar-review-result .ar-review-dot{background:var(--dsw-alias-state-error-primary,#e5484d)}.ar-review-tool{min-width:0;flex:1;overflow-wrap:anywhere}.ar-review-record time{flex:none;color:var(--dsw-alias-label-tertiary);font-size:12px;font-variant-numeric:tabular-nums}.ar-review-record-body{padding:2px 0 8px 18px}.ar-review-record-body code{overflow-wrap:anywhere}.ar-review-metadata{margin-top:12px;color:var(--dsw-alias-label-tertiary)}.ar-review-metadata summary{font-size:12px}.ar-review-metadata pre{color:var(--dsw-alias-label-secondary)}
+.ar-review-usage-menu{display:inline-flex;flex:none}.ar-review-usage-trigger{display:inline-flex;align-items:center;gap:5px;background:none;border:0;border-radius:6px;padding:1px 8px;font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;color:var(--dsw-alias-label-tertiary);cursor:pointer;white-space:nowrap}.ar-review-usage-trigger svg{width:14px;height:14px}.ar-review-usage-trigger:hover,.ar-review-usage-trigger[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}.ar-review-usage-trigger:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}.ar-review-usage-panel{position:fixed;z-index:1100;box-sizing:border-box;width:min(360px,calc(100vw - 24px));max-width:var(--dsh-anchored-max-width,none);max-height:var(--dsh-anchored-max-height,calc(100vh - 24px));overflow:auto;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg,12px);padding:12px;background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-primary);font-size:12px;line-height:18px}.ar-review-usage-panel .ar-session-usage{border:0;padding:0;margin:0}.ar-review-usage-panel .ar-usage-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ar-review-usage-panel>p{color:var(--dsw-alias-label-tertiary)}
+@media(max-width:540px){.ar-review-record-heading{gap:4px 10px;flex-wrap:wrap}.ar-review-record time{width:100%;padding-left:12px}.ar-usage-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 `;
       document.head.appendChild(style);
       return () => style.remove();
     }
 
-    function UsageCard({ connection, t }) {
-      const [state, setState] = useState({ status: 'loading', value: null, error: null });
-      const pending = useRef(null);
-      const load = async () => {
-        pending.current?.abort();
-        const controller = new AbortController();
-        pending.current = controller;
-        setState(previous => ({ ...previous, status: 'loading', error: null }));
-        try {
-          const response = await connection.rpc.call('/auto-review-desktop', 'status', {}, controller.signal);
-          if (controller.signal.aborted || pending.current !== controller) return;
-          if (!response.ok) throw new Error(`${response.error?.code ?? 'ERROR'}: ${response.error?.message ?? t('usageFailure')}`);
-          const value = response.value;
-          const fields = ['attempts', 'allows', 'denies', 'failures', 'cancelled', 'usageReported', 'inputTokens', 'outputTokens', 'cacheReadTokens'];
-          if (value?.scope !== 'process' || typeof value.running !== 'boolean' || !['available', 'unavailable'].includes(value.audit) || fields.some(field => !Number.isSafeInteger(value.totals?.[field]) || value.totals[field] < 0)) throw new Error(t('usageInvalid'));
-          setState({ status: 'ready', value, error: null });
-        } catch (error) {
-          if (controller.signal.aborted || pending.current !== controller) return;
-          setState(previous => ({ ...previous, status: 'error', error: error instanceof Error ? error.message : String(error) }));
-        }
-      };
-      useEffect(() => {
-        void load();
-        return () => { pending.current?.abort(); pending.current = null; };
-      }, [connection]);
-      const totals = state.value?.totals;
+    function UsageCard({ summary, t, compact = false }) {
+      if (!summary) return null;
+      const { totals, usageCoverage, recordOutcomes } = summary;
       const format = value => value.toLocaleString();
-      const tokenValue = key => state.value?.usageCoverage?.[key] > 0 ? format(totals[key]) : t('usageUnknown');
-      const row = (label, value) => h('div', { key: label }, h('dt', null, t(label)), h('dd', null, value));
-      return h('section', { className: 'ar-card', 'aria-labelledby': 'ar-usage-title' },
-        h('div', { className: 'ar-actions' }, h('h3', { id: 'ar-usage-title' }, t('usageTitle')),
-          h('button', { id: 'ar-usage-refresh', type: 'button', disabled: state.status === 'loading', onClick: () => void load() }, t('usageRefresh'))),
-        h('p', { className: 'ar-help' }, t('usageScope')),
-        state.status === 'loading' ? h('p', { className: 'ar-help', role: 'status' }, t('usageLoading')) : null,
-        state.error ? h('p', { className: 'ar-error', role: 'alert' }, `${t('usageFailure')} ${state.error}`) : null,
-        totals ? h('dl', { className: 'ar-usage-grid' },
-          row('usageAttempts', format(totals.attempts)), row('usageAllows', format(totals.allows)),
-          row('usageDenies', format(totals.denies)), row('usageFailures', format(totals.failures)), row('usageCancelled', format(totals.cancelled)),
-          row('usageInput', tokenValue('inputTokens')), row('usageOutput', tokenValue('outputTokens')), row('usageCache', tokenValue('cacheReadTokens')),
-          row('usageReported', `${format(totals.usageReported)} / ${format(totals.attempts)}`),
-        ) : null,
-        state.value?.running === false ? h('p', { className: 'ar-warning' }, t('usageStopped')) : null,
-        state.value?.audit === 'unavailable' ? h('p', { className: 'ar-warning' }, t('usageAuditUnavailable')) : null,
-        h('p', { className: 'ar-help' }, t('usageNote')),
-      );
+      const row = (label, value, note) => h('div', { key: label }, h('dt', null, t(label)), h('dd', null, value, note ? h('small', null, note) : null));
+      const tokenRow = (label, key) => {
+        const reported = usageCoverage[key] ?? 0;
+        return row(label, reported > 0 ? format(totals[key]) : t('usageUnknown'), reported > 0 && reported < totals.attempts ? t('usagePartial', { reported, attempts: totals.attempts }) : null);
+      };
+      return h('section', { className: 'ar-session-usage', 'aria-label': t('usageSession') },
+        h('h3', null, t(compact ? 'usageTitle' : 'usageSession')),
+        h('p', null, t('usageScope')),
+        h('dl', { className: 'ar-usage-grid' },
+          row('usageRecords', format(totals.records)), row('usageAttempts', format(totals.attempts)),
+          row('reviewResult_allowed', format(recordOutcomes.allowed)), row('reviewResult_denied', format(recordOutcomes.denied)),
+          row('usageFailures', format(recordOutcomes.failed + recordOutcomes.interrupted + recordOutcomes.cancelled)), row('usageCancelled', format(recordOutcomes.cancelled)), row('reviewResult_reviewing', format(recordOutcomes.reviewing)),
+          tokenRow('usageTotal', 'totalTokens'), tokenRow('usageInput', 'inputTokens'), tokenRow('usageOutput', 'outputTokens'), tokenRow('usageCache', 'cacheReadTokens'),
+          tokenRow('usageCacheWrite', 'cacheWriteTokens'), tokenRow('usageReasoning', 'reasoningTokens'),
+          row('usageReported', `${format(totals.usageReported)} / ${format(totals.attempts)}`)),
+        h('p', null, t('usageNote')));
     }
 
-    function SettingsSection({ form, mirror, catalog, connection, t }) {
+    function SettingsSection({ form, mirror, catalog, t }) {
       const snapshot = useSyncExternalStore(fn => form.subscribe(fn), () => form.getSnapshot());
       const mirrored = useSyncExternalStore(fn => mirror.subscribe(fn), () => mirror.getSnapshot());
       const models = useSyncExternalStore(fn => catalog.store.subscribe(fn), () => catalog.store.getSnapshot());
@@ -336,7 +319,7 @@ window.__ModuleLoader__.load({
       }), null, errors[key], `ar-${key}`);
       const loadError = mirrored.error;
       if (draft === null || snapshot.status !== 'ready') return h('section', { 'data-auto-review-settings': '', 'aria-labelledby': 'ar-title' },
-        h('h2', { id: 'ar-title' }, t('title')), help(t('scope')), h(UsageCard, { connection, t }),
+        h('h2', { id: 'ar-title' }, t('title')), help(t('scope')),
         h('p', { role: loadError ? 'alert' : 'status', className: loadError ? 'ar-error' : 'ar-help' }, loadError ? `${t('unavailable')} ${String(loadError)}` : t(snapshot.status === 'unavailable' ? 'unavailable' : 'loading')),
         h('button', { type: 'button', onClick: () => void reload(), disabled: busy }, t(busy ? 'reloading' : 'reloadAll')),
         notice ? h('p', { className: 'ar-error', role: 'alert' }, notice.text) : null);
@@ -346,17 +329,17 @@ window.__ModuleLoader__.load({
       const unknownSelected = draft.routeMode === 'specific' && draft.model !== '' && picked === undefined;
       const efforts = picked?.model.reasoning?.efforts ?? [];
       return h('form', { 'data-auto-review-settings': '', 'aria-labelledby': 'ar-title', onSubmit: save, noValidate: true },
-        h('h2', { id: 'ar-title' }, t('title')), h('p', null, t('intro')), help(t('scope')), h(UsageCard, { connection, t }),
+        h('h2', { id: 'ar-title' }, t('title')), h('p', null, t('intro')), help(t('scope')),
         !snapshot.writable ? h('p', { className: 'ar-warning', role: 'status' }, t('readOnly')) : null,
         loadError ? h('p', { className: 'ar-error', role: 'alert' }, `${t('reloadFailed')} ${String(loadError)}`) : null,
         conflict ? h('p', { className: 'ar-warning', role: 'alert' }, t('conflict')) : null,
-        h('div', { className: 'ar-card' },
+        h('section', { className: 'ar-card', 'aria-label': t('settingsModel') }, h('h3', null, t('settingsModel')),
           field(t('route'), select('routeMode', [option('follow', t('follow')), option('specific', t('specific'))], value => {
             setDraft(previous => ({ ...previous, routeMode: value, ...(value === 'follow' && previous.reasoningMode === 'specific' ? { reasoningMode: 'low', reasoningEffort: '' } : {}) })); setNotice(null);
           }), t(draft.routeMode === 'follow' ? 'followHelp' : 'specificHelp'), null, 'ar-routeMode'),
           draft.routeMode === 'specific' ? h(React.Fragment, null,
-            field(t('search'), h('input', { id: 'ar-model-filter', type: 'search', value: query, disabled: busy, onChange: event => setQuery(event.target.value), placeholder: t('search') }), null, null, 'ar-model-filter'),
-            field(t('model'), h('select', { id: 'ar-model', value: picked || unknownSelected ? modelKey : '', disabled: disabled || models.status !== 'ready',
+          field(t('search'), h('input', { id: 'ar-model-filter', type: 'search', value: query, disabled: busy, onChange: event => setQuery(event.target.value), placeholder: t('search') }), null, null, 'ar-model-filter'),
+          field(t('model'), h('select', { id: 'ar-model', value: picked || unknownSelected ? modelKey : '', disabled: disabled || models.status !== 'ready',
               'aria-invalid': errors.model ? true : undefined, 'aria-describedby': errors.model ? 'ar-model-error' : undefined,
               onChange: event => {
                 const choice = choices.find(candidate => candidate.key === event.target.value);
@@ -377,31 +360,31 @@ window.__ModuleLoader__.load({
           field(t('reasoning'), select('reasoningMode', [option('low', t('low')), option('default', t('modelDefault')), ...(draft.routeMode === 'specific' && efforts.length > 0 || draft.reasoningMode === 'specific' ? [option('specific', t('effortSpecific'), { disabled: draft.routeMode !== 'specific' || efforts.length === 0 })] : [])]), draft.reasoningMode === 'low' ? t('lowHelp') : draft.routeMode === 'follow' ? t('followEffort') : null, null, 'ar-reasoningMode'),
           draft.reasoningMode === 'specific' ? field(t('effort'), select('reasoningEffort', [option('', t('chooseModel'), { disabled: true }), ...efforts.map(effort => option(effort.id, effort.name ?? effort.id))], null, { 'aria-invalid': errors.reasoningEffort ? true : undefined, 'aria-describedby': errors.reasoningEffort ? 'ar-reasoningEffort-error' : undefined }), null, errors.reasoningEffort, 'ar-reasoningEffort') : null,
         ),
-        h('div', { className: 'ar-card' }, h('h3', null, t('limits')), h('div', { className: 'ar-grid' },
-          number('timeoutMs'), number('maxOutputTokens'), number('maxInputChars'), number('maxReviewsPerTurn'),
-          field(t('maxRetries'), select('maxRetries', [option('0', t('retryNone')), option('1', t('retryOnce'))], value => update('maxRetries', Number(value))), null, null, 'ar-maxRetries'),
-        ), help(t('inputHelp'))),
-        h('div', { className: 'ar-card' }, field(t('workspaceReads'), select('workspaceReads', [option('allow', t('workspaceReadsAllow')), option('approve', t('workspaceReadsApprove'))], null, {
+        h('section', { className: 'ar-card', 'aria-label': t('settingsWorkspace') }, h('h3', null, t('settingsWorkspace')), field(t('workspaceReads'), select('workspaceReads', [option('allow', t('workspaceReadsAllow')), option('approve', t('workspaceReadsApprove'))], null, {
           'aria-invalid': errors.workspaceReads ? true : undefined,
           'aria-describedby': `ar-workspaceReads-help${errors.workspaceReads ? ' ar-workspaceReads-error' : ''}`,
-        }), t('workspaceReadsHelp'), errors.workspaceReads, 'ar-workspaceReads')),
-        h('div', { className: 'ar-card' }, field(t('workspaceEscalation'), select('workspaceEscalation', [option('ask', t('workspaceAsk')), option('review', t('workspaceReview'))], null, {
+        }), t('workspaceReadsHelp'), errors.workspaceReads, 'ar-workspaceReads'),
+           field(t('workspaceEscalation'), select('workspaceEscalation', [option('ask', t('workspaceAsk')), option('review', t('workspaceReview'))], null, {
           'aria-invalid': errors.workspaceEscalation ? true : undefined,
           'aria-describedby': `ar-workspaceEscalation-help${errors.workspaceEscalation ? ' ar-workspaceEscalation-error' : ''}`,
         }), t('workspaceEscalationHelp'), errors.workspaceEscalation, 'ar-workspaceEscalation')),
-        h('div', { className: 'ar-card' }, field(t('preciseDeletion'), h('input', {
+        h('section', { className: 'ar-card', 'aria-label': t('settingsDecisions') }, h('h3', null, t('settingsDecisions')), field(t('denialPolicy'), select('denialPolicy', [option('deny', t('deny')), option('ask', t('ask'))], null, {
+          'aria-invalid': errors.denialPolicy ? true : undefined, 'aria-describedby': `ar-denialPolicy-help${errors.denialPolicy ? ' ar-denialPolicy-error' : ''}`,
+        }), t('denialHelp'), errors.denialPolicy, 'ar-denialPolicy'),
+           field(t('subagentApproval'), select('subagentApproval', [option('inherit', t('subagentInherit')), option('deny', t('subagentDeny'))], null, {
+          'aria-invalid': errors.subagentApproval ? true : undefined, 'aria-describedby': `ar-subagentApproval-help${errors.subagentApproval ? ' ar-subagentApproval-error' : ''}`,
+        }), t('subagentHelp'), errors.subagentApproval, 'ar-subagentApproval'),
+           field(t('failurePolicy'), select('failurePolicy', [option('deny', t('deny')), option('ask', t('ask'))]), t('failureHelp'), null, 'ar-failurePolicy')),
+        h('section', { className: 'ar-card', 'aria-label': t('settingsProtection') }, h('h3', null, t('settingsProtection')), field(t('preciseDeletion'), h('input', {
           id: 'ar-preciseDeletion', type: 'checkbox', checked: draft.preciseDeletion, disabled,
           'aria-invalid': errors.preciseDeletion ? true : undefined,
           'aria-describedby': `ar-preciseDeletion-help${errors.preciseDeletion ? ' ar-preciseDeletion-error' : ''}`,
           onChange: event => update('preciseDeletion', event.target.checked),
         }), t('preciseDeletionHelp'), errors.preciseDeletion, 'ar-preciseDeletion')),
-        h('div', { className: 'ar-card' }, field(t('denialPolicy'), select('denialPolicy', [option('deny', t('deny')), option('ask', t('ask'))], null, {
-          'aria-invalid': errors.denialPolicy ? true : undefined, 'aria-describedby': `ar-denialPolicy-help${errors.denialPolicy ? ' ar-denialPolicy-error' : ''}`,
-        }), t('denialHelp'), errors.denialPolicy, 'ar-denialPolicy')),
-        h('div', { className: 'ar-card' }, field(t('subagentApproval'), select('subagentApproval', [option('inherit', t('subagentInherit')), option('deny', t('subagentDeny'))], null, {
-          'aria-invalid': errors.subagentApproval ? true : undefined, 'aria-describedby': `ar-subagentApproval-help${errors.subagentApproval ? ' ar-subagentApproval-error' : ''}`,
-        }), t('subagentHelp'), errors.subagentApproval, 'ar-subagentApproval')),
-        h('div', { className: 'ar-card' }, field(t('failurePolicy'), select('failurePolicy', [option('deny', t('deny')), option('ask', t('ask'))]), t('failureHelp'), null, 'ar-failurePolicy')),
+        h('div', { className: 'ar-card' }, h('h3', null, t('limits')), h('div', { className: 'ar-grid' },
+          number('timeoutMs'), number('maxOutputTokens'), number('maxInputChars'), number('maxReviewsPerTurn'),
+          field(t('maxRetries'), select('maxRetries', [option('0', t('retryNone')), option('1', t('retryOnce'))], value => update('maxRetries', Number(value))), null, null, 'ar-maxRetries'),
+        ), help(t('inputHelp'))),
         h('div', { className: 'ar-actions' },
           h('button', { type: 'submit', className: 'ar-primary', disabled: disabled || !dirty || conflict || Object.keys(errors).length > 0 }, t(busy ? 'saving' : 'save')),
           h('button', { type: 'button', disabled: busy, onClick: () => void reload() }, t('reload')),
@@ -736,7 +719,7 @@ window.__ModuleLoader__.load({
               if (!response.ok || !Array.isArray(response.value?.records) || !Number.isSafeInteger(response.value.revision)) throw new Error('Review history unavailable');
               const changed = revision !== response.value.revision || snapshot.loading || snapshot.error || snapshot.available !== response.value.available;
               revision = response.value.revision;
-              if (changed) publish({ records: response.value.records, available: response.value.available, loading: false, error: null });
+              if (changed) publish({ records: response.value.records, summary: response.value.summary, available: response.value.available, loading: false, error: null });
               if (response.value.closed) return;
             }
           } catch {
@@ -779,32 +762,87 @@ window.__ModuleLoader__.load({
     }
     function ToolReviewRows({ snapshot, root, t, inspectCall }) {
       if (!root) return null;
-      const rows = snapshot.records.filter(row => row.rootCallId === root.callId);
+      const rows = snapshot.records.filter(row => row.rootCallId === root.callId && (row.callSeq === undefined || row.callSeq === root.seq));
       return rows.map(row => h(ReviewNotice, { key: row.id, row, t, inspectCall }));
+    }
+    function formatReviewTime(value) {
+      const date = new Date(value);
+      return Number.isFinite(date.getTime()) ? { text: date.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }), iso: date.toISOString() } : { text: '—' };
+    }
+    function formatArguments(value) {
+      if (typeof value !== 'string') return JSON.stringify(value, null, 2);
+      try { return JSON.stringify(JSON.parse(value), null, 2); } catch { return value; }
+    }
+    function ReviewRecordDetail({ row, t, inspectCall }) {
+      const value = row.arguments;
+      const display = reviewPresentation(row);
+      const { arguments: _arguments, ...metadata } = row;
+      return h('div', { className: 'ar-review-record-body' },
+        h('p', null, t('approvalCall'), ': ', h('code', null, row.callId)),
+        row.rootCallId !== row.callId ? h('p', null, t('reviewOriginalCall'), ': ', h('code', null, row.rootCallId)) : null,
+        h('p', null, t('childApprovalArguments')),
+        value !== undefined ? h('pre', { 'data-review-arguments': true }, formatArguments(value)) : h('p', null, t('reviewArgumentsMissing')),
+        display.reason ? h('p', { className: 'ar-review-reason' }, display.reason) : null,
+        h('p', null, t('reviewGate'), ': ', row.gate ? t(`reviewGate_${row.gate}`) : t('reviewGatePending')),
+        row.gate === 'ask' && display.state === 'denied' ? h('p', null, t('reviewHumanFallback')) : null,
+        display.state === 'allowed' ? h('p', null, t('reviewAllowNote')) : null,
+        inspectCall ? h('button', { type: 'button', className: 'ar-review-link', onClick: () => inspectCall(row.callId) }, t('reviewInspect')) : null,
+        h('details', { className: 'ar-review-metadata' }, h('summary', null, t('reviewMetadata')), h('pre', null, JSON.stringify(metadata, null, 2))));
+    }
+    function ReviewRecord({ row, t, inspectCall }) {
+      const [open, setOpen] = useState(false);
+      const display = reviewPresentation(row), time = formatReviewTime(row.startedAt);
+      return h('details', { className: 'ar-review-record', 'data-review-record': row.id, 'data-review-state': display.state,
+        onToggle: event => { if (event.target === event.currentTarget) setOpen(event.currentTarget.open); } },
+        h('summary', null,
+          h('span', { className: 'ar-review-record-heading' },
+            h('span', { className: 'ar-review-result' }, h('span', { className: 'ar-review-dot', 'aria-hidden': true }), t(`reviewResult_${display.state}`)),
+            h('code', { className: 'ar-review-tool' }, row.tool),
+            h('time', { dateTime: time.iso }, time.text))),
+        open ? h(ReviewRecordDetail, { row, t, inspectCall }) : null);
     }
     function ReviewTrajectory({ snapshot, store, t, inspectCall }) {
       const [query, setQuery] = useState('');
       const rows = snapshot.records.filter(row => `${row.tool} ${row.callId} ${row.rootCallId}`.toLowerCase().includes(query.toLowerCase()));
-      return h('details', { className: 'ar-review-trajectory ar-review-standalone', open: true },
-        h('summary', null, t('reviewHistory'), ` (${snapshot.records.length})`),
+      return h('section', { className: 'ar-review-trajectory ar-review-standalone', 'aria-label': t('reviewTab') },
         h('div', { className: 'ar-review-ledger' },
-          h('p', null, t('reviewHistoryHelp')),
+          h('h2', null, t('reviewHistory'), ` (${snapshot.records.length})`),
           h(ReviewHistoryStatus, { snapshot, store, t }),
           snapshot.loading ? h('p', { role: 'status' }, t('reviewHistoryLoading')) : null,
-          snapshot.records.length ? h('input', { type: 'search', value: query, placeholder: t('reviewFilter'), 'aria-label': t('reviewFilter'), onChange: event => setQuery(event.target.value) }) : h('p', null, t('reviewHistoryEmpty')),
-          rows.map(row => h('details', { key: row.id, className: 'ar-review-record', 'data-review-record': row.id },
-            h('summary', null, t(`review_${reviewPresentation(row).state}`), ' · ', row.tool, ' · ', row.callId),
-            h('p', null, t('reviewOriginalCall'), ': ', h('code', null, row.rootCallId)),
-            h('p', null, t('reviewGate'), ': ', row.gate ? t(`reviewGate_${row.gate}`) : t('reviewGatePending')),
-            inspectCall ? h('button', { type: 'button', className: 'ar-review-link', onClick: () => inspectCall(row.callId) }, t('reviewInspect')) : null,
-            h('pre', null, JSON.stringify(row, null, 2))))));
+          h(UsageCard, { summary: snapshot.summary, t }),
+          h('p', null, t('reviewHistoryHelp')),
+          snapshot.records.length ? h('input', { type: 'search', value: query, placeholder: t('reviewFilter'), 'aria-label': t('reviewFilter'), onChange: event => setQuery(event.target.value) }) : !snapshot.loading && !snapshot.error ? h('p', null, t('reviewHistoryEmpty')) : null,
+          rows.map(row => h(ReviewRecord, { key: row.id, row, t, inspectCall }))));
+    }
+    function ReviewUsageMenu({ snapshot, store, t, sessionId }) {
+      const [open, setOpen] = useState(false);
+      const rootRef = useRef(null), panelRef = useRef(null);
+      const position = useAnchoredPosition({ open, anchorRef: rootRef, panelRef, side: 'top', gap: 8, margin: 12 });
+      useDismissOnOutsidePointer(rootRef, open, setOpen, panelRef);
+      useEffect(() => { setOpen(false); }, [sessionId]);
+      useEffect(() => {
+        if (!open) return;
+        panelRef.current?.focus({ preventScroll: true });
+        const onKeyDown = event => { if (event.key === 'Escape') { setOpen(false); rootRef.current?.querySelector('button')?.focus(); } };
+        document.addEventListener('keydown', onKeyDown);
+        return () => document.removeEventListener('keydown', onKeyDown);
+      }, [open]);
+      if (!snapshot.records.length && !snapshot.error && !snapshot.loading) return null;
+      return h('span', { ref: rootRef, className: 'ar-review-usage-menu', 'data-composer-stat': 'auto-review-usage' },
+        h('button', { type: 'button', className: 'ar-review-usage-trigger', 'aria-haspopup': 'dialog', 'aria-expanded': open, onClick: () => setOpen(value => !value) },
+          h(IconDatabaseOutlineRegular, { width: 14, height: 14, 'aria-hidden': true }), t('usageTitle')),
+        open ? createPortal(h('div', { ref: panelRef, className: 'ar-review-usage-panel', role: 'dialog', tabIndex: -1, 'aria-label': t('usageTitle'), style: position ?? { visibility: 'hidden', top: 0, left: 0 } },
+          h(ReviewHistoryStatus, { snapshot, store, t }),
+          snapshot.loading ? h('p', { role: 'status' }, t('usageLoading')) : null,
+          h(UsageCard, { summary: snapshot.summary, t, compact: true }),
+          h('p', null, t('usageSeparate'))), document.body) : null);
     }
     // Project existing root tool-call events into independent Chat rows. The
     // session log stays unchanged; the view only joins its call ID to history.
     const reviewCallDefinition = {
       kind: 'auto-review-call-status', target: 'chat',
-      match: { 'tool/call': event => ({ id: String(event.data.callId), role: 'start' }) },
-      start: (_context, match) => ({ seq: match.event.seq, root: { callId: String(match.event.data.callId) } }),
+      match: { 'tool/call': event => ({ id: `${event.seq}:${event.data.callId}`, role: 'start' }) },
+      start: (_context, match) => ({ seq: match.event.seq, root: { callId: String(match.event.data.callId), seq: match.event.seq } }),
       update: context => context.state,
       buildViewNode: context => context.state === undefined ? null : {
         key: context.key, kind: 'auto-review-call-status', id: context.id, target: 'chat',
@@ -823,18 +861,23 @@ window.__ModuleLoader__.load({
         }
         function TrajectoryReview(props) {
           const store = storeFor(props.sessionId), snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
-          return h(ReviewTrajectory, { snapshot, store, t: scope.locale.bind(NS), inspectCall: props.inspectCall });
+          return h(ReviewTrajectory, { snapshot, store, key: props.sessionId, t: scope.locale.bind(NS), inspectCall: props.inspectCall });
         }
         function HistoryConnectionStatus(props) {
           const store = storeFor(props.sessionId), snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
           if (!snapshot.error && snapshot.available !== false) return null;
           return h('div', { className: 'ar-review-connection' }, h(ReviewHistoryStatus, { snapshot, store, t: scope.locale.bind(NS) }));
         }
+        function SessionUsage(props) {
+          const store = storeFor(props.sessionId), snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
+          return h(ReviewUsageMenu, { key: props.sessionId, snapshot, store, sessionId: props.sessionId, t: scope.locale.bind(NS) });
+        }
+        const usage = scope.slots.inject('conversation.composer.dock', () => scope.slots.register({ name: 'conversation.composer.dock', id: 'auto-review-usage', order: 2, locale: NS }, SessionUsage));
         const definition = scope.uiConversation.events.register(reviewCallDefinition);
         const dock = scope.slots.inject('conversation.composer.dock', () => scope.slots.register({ name: 'conversation.composer.dock', id: 'auto-review-history-status', order: -90, locale: NS }, HistoryConnectionStatus));
         const chat = scope.slots.inject('conversation.chat.node', () => scope.slots.register({ name: 'conversation.chat.node', key: 'auto-review-call-status', locale: NS }, ChatReview));
         const trajectory = scope.slots.inject('conversation.view', () => scope.slots.register({ name: 'conversation.view', id: 'auto-review-trajectory', order: 11, locale: NS, label: () => scope.locale.bind(NS)('reviewTab') }, TrajectoryReview));
-        return () => { definition(); dock(); chat(); trajectory(); for (const store of stores.values()) store.dispose(); stores.clear(); };
+        return () => { definition(); dock(); chat(); trajectory(); usage(); for (const store of stores.values()) store.dispose(); stores.clear(); };
       }, 'auto-review-desktop: review history'));
     }
 
@@ -851,7 +894,7 @@ window.__ModuleLoader__.load({
       const t = ctx.locale.bind(NS);
       ctx.effect(() => ctx.configForms.whileServed(['auto-review-desktop'], () => ctx.slots.inject('settings.section', () => ctx.slots.register({
         name: 'settings.section', id: 'auto-review-desktop', order: 12, label: () => t('nav'), locale: NS,
-        inject: () => ({ form: ctx.configForms.get('auto-review-desktop'), mirror: ctx.configForms.describe(), catalog: ctx.modelDirectories.catalog, connection: ctx.connection }),
+        inject: () => ({ form: ctx.configForms.get('auto-review-desktop'), mirror: ctx.configForms.describe(), catalog: ctx.modelDirectories.catalog }),
       }, SettingsSection))), 'auto-review-desktop: native settings section');
     }
     return {
@@ -863,7 +906,7 @@ window.__ModuleLoader__.load({
       localizePermissionCatalog, decoratePermissionTree, registerPermissionPresentation, permissionDictionaries: { en, zh },
       createApprovalCollector, approvalRoot, readApprovalCall, ChildApprovalSummary, ChildApprovalItem, registerChildApprovals,
       loadApprovalDetail, ApprovalDetailBody, NativeApprovalDetail, registerApprovalDetails,
-      createHistoryStore, reviewPresentation, ReviewNotice, ToolReviewRows, ReviewTrajectory, reviewCallDefinition, registerReviewHistory,
+      createHistoryStore, reviewPresentation, ReviewNotice, ToolReviewRows, ReviewTrajectory, ReviewRecord, ReviewRecordDetail, ReviewUsageMenu, formatReviewTime, reviewCallDefinition, registerReviewHistory,
     };
   },
 });

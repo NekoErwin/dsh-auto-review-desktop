@@ -42,7 +42,7 @@ python scripts/extract-test-runtime.py
 
 `native-compatibility` 固定同版本完整 ToolSchema 的 SHA-256，并固定每个 agent 的首次兼容定义身份。它用于保守兼容回退，不认证 Host 插件实现。升级宿主、原生工具配置或 Schema 时，先验证真实执行/沙箱链路再更新兼容表；不要只更新 hash 以绕过回退。
 
-`history` 和 `history-gate` 测试覆盖逐调用记录、PTC、持久化冷读、故障/取消/重试和失效模型输出。历史是展示数据，不是授权来源；理由只进入独立 history，不得加入现有脱敏统计审计。第三方插件不能使用 `appendPluginRecord` 或伪造审批/turn-error 会话事件。本版通过认证 owner 的只读 RPC 及可取消 long-poll 展示。
+`history` 和 `history-gate` 测试覆盖逐调用记录、PTC、持久化冷读、故障/取消/重试和失效模型输出。历史是展示数据，不是授权来源；完整工具参数及理由只进入独立 history，不得加入现有脱敏统计审计。第三方插件不能使用 `appendPluginRecord` 或伪造审批/turn-error 会话事件。本版通过认证 owner 的只读 RPC 及可取消 long-poll 展示。
 
 `client-history` 覆盖错误行、结构化详情、同调用关联、共享订阅及取消，并验证由已有 `tool/call` 派生的自有 Conversation 节点。`client-history-runtime` 使用同版本 Desktop shell 中的真实 SlotCore、真实 SlotRegistry 和 Cordis，固定验证重复子 Slot 会抛错，以及新的独立 chat key、审查 view、dock 能挂载并在卸载后还原。**不能复制原 entry 的 `children` 来包装原生工具或轨迹**：子 Slot 独占声明与 entry priority 无关，0.4.6 正是因此导致整组展示 fiber 回滚。不要退回只用简化 mock 验证这一约束。新增文案独立绑定增强审查 namespace；实际页面视觉验证仍需与运行时注册验证区分。
 
@@ -53,7 +53,7 @@ node scripts/build.mjs
 python scripts/package-deliverables.py
 ```
 
-当前源码版本 `0.4.8`。输出在 `deliverables/`，只包含显式列出的源码和生成物，不包含运行时缓存、临时文件或 Git 数据。正式版本安装包已有时不覆盖，同版本重建输出 `-local.tgz`。正式发布先递增版本。
+当前源码版本 `0.4.9`。输出在 `deliverables/`，只包含显式列出的源码和生成物，不包含运行时缓存、临时文件或 Git 数据。正式版本安装包已有时不覆盖，同版本重建输出 `-local.tgz`。正式发布先递增版本。
 
 源码 ZIP 包含测试与开发说明；安装 TGZ 包含原生客户端构建。新检出先构建再打包。安装必须使用宿主插件管理器，不能手工改 profile composition 或运行 profile 包管理器。管理器返回 `application: applied` 才表示本次变更已经应用；需要刷新现有 Desktop 页面读取新客户端，不要启动替代服务器冒充验证。
 

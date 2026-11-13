@@ -2,6 +2,42 @@ import { mkdir, appendFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 
+const TOKEN_FIELDS = ['inputTokens', 'outputTokens', 'totalTokens', 'cacheReadTokens', 'cacheWriteTokens', 'reasoningTokens'];
+
+/** Pure display projection of the latest record snapshots, never an authorization source. */
+export function summarizeReviewHistory(records) {
+  const totals = { records: records.length, attempts: 0, allows: 0, denies: 0, failures: 0, cancelled: 0, usageReported: 0,
+    ...Object.fromEntries(TOKEN_FIELDS.map(key => [key, 0])) };
+  const usageCoverage = Object.fromEntries(TOKEN_FIELDS.map(key => [key, 0]));
+  const recordOutcomes = { allowed: 0, denied: 0, failed: 0, cancelled: 0, interrupted: 0, reviewing: 0 };
+  for (const row of records) {
+    const attempts = Array.isArray(row.attempts) ? row.attempts : [];
+    // Match reviewPresentation: a reviewer denial stays visible even after a gate failure.
+    const state = attempts.some(attempt => attempt?.verdict?.decision === 'deny') ? 'denied'
+      : row.status === 'reviewing' ? 'reviewing' : row.status === 'failed' ? 'failed'
+      : row.status === 'cancelled' ? 'cancelled' : row.status === 'interrupted' ? 'interrupted'
+      : attempts.at(-1)?.verdict?.decision === 'allow' ? 'allowed' : 'failed';
+    recordOutcomes[state]++;
+    for (const attempt of attempts) {
+      totals.attempts++;
+      const outcome = attempt?.outcome === 'allow' ? 'allows' : attempt?.outcome === 'deny' ? 'denies'
+        : attempt?.outcome === 'cancelled' ? 'cancelled' : 'failures';
+      totals[outcome]++;
+      let reported = false;
+      for (const key of TOKEN_FIELDS) {
+        const value = attempt?.usage?.[key];
+        if (Number.isFinite(value) && value >= 0) {
+          totals[key] += value;
+          usageCoverage[key]++;
+          reported = true;
+        }
+      }
+      if (reported) totals.usageReported++;
+    }
+  }
+  return { totals, usageCoverage, recordOutcomes };
+}
+
 /** Display-only, profile-owned records. Never consulted to authorize an action. */
 export function createReviewHistory(profileHome, logger) {
   const cells = new Map();
@@ -46,7 +82,7 @@ export function createReviewHistory(profileHome, logger) {
       const sessionId = String(exec.agent.session.id), cell = cellFor(sessionId);
       const call = exec.agent.session.snapshotEvents().findLast(event => event.type === 'tool/call' && event.data.callId === exec.rootCallId);
       const row = { version: 1, id: randomUUID(), sessionId, callId: String(exec.callId), rootCallId: String(exec.rootCallId ?? exec.callId),
-        tool: exec.name, ...(call ? { callSeq: call.seq } : {}), startedAt: Date.now(), status: 'reviewing', attempts: [] };
+        tool: exec.name, arguments: structuredClone(exec.arguments), ...(call ? { callSeq: call.seq } : {}), startedAt: Date.now(), status: 'reviewing', attempts: [] };
       save(cell, row);
       return {
         attempt(attempt) { row.attempts.push(structuredClone(attempt)); save(cell, row); },
@@ -55,7 +91,8 @@ export function createReviewHistory(profileHome, logger) {
     },
     async read(sessionId) {
       const cell = cellFor(sessionId); await cell.pending; await cell.loaded;
-      return { revision: cell.revision, available, closed, records: [...cell.rows.values()] };
+      const records = [...cell.rows.values()];
+      return { revision: cell.revision, available, closed, records, summary: summarizeReviewHistory(records) };
     },
     async watch(sessionId, revision, signal) {
       const cell = cellFor(sessionId); await cell.pending; await cell.loaded;

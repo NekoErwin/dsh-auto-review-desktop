@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 function boot() {
   let plugin;
-  const React = { Fragment: 'fragment', createElement: (type, props, ...children) => ({ type, props: { ...props, children: children.flat(Infinity).filter(x => x != null) } }), useState: initial => [initial, () => {}] };
+  const React = { Fragment: 'fragment', createElement: (type, props, ...children) => ({ type, props: { ...props, children: children.flat(Infinity).filter(x => x != null) } }), useState: initial => [initial, () => {}], useEffect: () => {} };
   vm.runInNewContext(readFileSync(new URL('../src/client.js', import.meta.url), 'utf8'), {
     AbortController, WeakSet, window: { __ModuleLoader__: { load(def) { plugin = def.factory(name => name === 'react' ? React : {}); } } },
   });
@@ -53,21 +53,44 @@ test('status presentation never describes a stale allow or failed attempt as app
 });
 
 test('PTC review notices attach only to the original root call and retain individual child IDs', () => {
-  const p = boot(), snapshot = { records: [row(), row({ id: 'other', rootCallId: 'another-root' }), row({ id: 'second', callId: 'inner-2' })] };
-  const matches = p.ToolReviewRows({ snapshot, root: { callId: 'outer', seq: 999 }, t: x => x });
+  const p = boot(), snapshot = { records: [row({ callSeq: 10 }), row({ id: 'other', rootCallId: 'another-root', callSeq: 10 }), row({ id: 'second', callId: 'inner-2', callSeq: 10 }), row({ id: 'reused-id-in-another-step', callSeq: 20 })] };
+  const matches = p.ToolReviewRows({ snapshot, root: { callId: 'outer', seq: 10 }, t: x => x });
   assert.deepEqual(Array.from(matches, item => item.props.row.callId), ['inner', 'inner-2']);
   assert.equal(p.ToolReviewRows({ snapshot, root: null }), null);
 });
 
-test('trajectory contains complete structured verdicts and explicitly separates final gate outcomes', () => {
-  const p = boot(), record = row({ gate: 'ask', attempts: [{ verdict: { risk: 'high', decision: 'deny', reason: 'denied reason' }, model: 'reviewer', durationMs: 42, usage: { inputTokens: 17 } }] });
-  const rendered = p.ReviewTrajectory({ snapshot: { records: [record], available: true }, store: {}, t: key => key });
-  const tree = nodes(rendered), data = JSON.parse(tree.find(node => node.type === 'pre').props.children[0]);
-  assert.deepEqual(data, record);
-  assert(tree.some(node => node.props.children.includes('reviewGate_ask')));
-  assert.equal(tree.find(node => node.type === 'input').props['aria-label'], 'reviewFilter');
+test('review page renders a session summary and independent records, with arguments above collapsed metadata', () => {
+  const p = boot(), record = row({ startedAt: Date.UTC(2026, 10, 13, 3, 24, 4), arguments: { command: 'echo <full>', nested: { full: 'z'.repeat(18000) } }, gate: 'ask', attempts: [{ verdict: { risk: 'high', decision: 'deny', reason: 'denied reason' }, model: 'reviewer', durationMs: 42, usage: { inputTokens: 17 } }] });
+  const rendered = p.ReviewTrajectory({ snapshot: { records: [record], summary: { sentinel: true }, available: true }, store: {}, t: key => key });
+  assert(nodes(rendered).some(node => node.type === p.UsageCard && node.props.summary.sentinel));
+  const list = nodes(rendered).find(node => node.type === p.ReviewRecord);
+  assert.equal(list.props.row, record);
+  const item = p.ReviewRecord(list.props), heading = nodes(item).find(node => node.type === 'summary');
+  assert(nodes(heading).some(node => node.type === 'time' && node.props.dateTime === '2026-11-13T03:24:04.000Z'));
+  assert(!nodes(heading).some(node => node.props.children.includes('inner')));
+  assert(nodes(heading).some(node => node.props.children.includes('reviewResult_denied')));
+  assert.equal(item.props['data-review-state'], 'denied');
+  assert(!nodes(item).some(node => node.type === p.ReviewRecordDetail), 'collapsed records do not mount full details');
+  const detail = p.ReviewRecordDetail({ row: record, t: key => key });
+  const args = nodes(detail).find(node => node.props['data-review-arguments']);
+  assert.deepEqual(JSON.parse(args.props.children[0]), record.arguments);
+  assert(nodes(detail).some(node => node.props.children.includes('inner')));
+  const metadata = nodes(detail).find(node => node.type === 'details');
+  assert.equal(metadata.props.open, undefined);
+  assert(nodes(metadata).some(node => node.props.children.includes('reviewMetadata')));
+  const data = JSON.parse(nodes(metadata).find(node => node.type === 'pre').props.children[0]);
+  assert.equal(data.attempts[0].model, 'reviewer'); assert.equal(data.arguments, undefined);
+  assert(nodes(detail).some(node => node.props.children.includes('reviewGate_ask')));
+  assert.equal(nodes(rendered).find(node => node.type === 'input').props['aria-label'], 'reviewFilter');
 });
-
+test('review labels use passed, denied and failed, and timestamps tolerate missing older data', () => {
+  const p = boot(); assert.equal(p.permissionDictionaries.zh.reviewTab, '审查');
+  assert.equal(p.permissionDictionaries.en.reviewTab, 'Review');
+  for (const [state, label] of [['allowed', '通过'], ['denied', '拒绝'], ['failed', '失败']]) {
+    assert.equal(p.permissionDictionaries.zh[`reviewResult_${state}`], label);
+  }
+  assert.equal(p.formatReviewTime(undefined).text, '—');
+});
 test('history store shares one cancellable long-poll, keeps late responses out, and reconnects after failure', async () => {
   const p = boot(), calls = [], pending = [];
   const connection = { rpc: { call(channel, endpoint, payload, signal) { calls.push({ channel, endpoint, payload, signal }); return new Promise((resolve, reject) => pending.push({ resolve, reject })); } } };
@@ -90,7 +113,8 @@ test('review status projects an existing call into its own Chat key without modi
   const p = boot(), def = p.reviewCallDefinition;
   const event = { type: 'tool/call', seq: 594, time: 10, data: { callId: 'root', name: 'write', turn: 11, step: 1 } };
   const before = plain(event), match = def.match['tool/call'](event);
-  assert.equal(match.id, 'root'); assert.equal(match.role, 'start');
+  assert.equal(match.id, '594:root'); assert.equal(match.role, 'start');
+  assert.notEqual(def.match['tool/call']({ ...event, seq: 600 }).id, match.id);
   const state = def.start({}, { event }), location = { kind: 'step', turn: { turn: 11 }, step: { step: 1 } };
   const context = { key: 'review-context', kind: def.kind, id: 'root', state, start: { event, location }, matches: [{ event, location }] };
   const node = def.buildViewNode(context);

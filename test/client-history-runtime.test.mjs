@@ -81,7 +81,7 @@ test('real Cordis, SlotRegistry and ConversationEventRegistry register independe
   const ctx = new cordis.Context(), Registry = loadRegistry(loadDesktopSlotCore());
   mountNative(ctx, Registry);
   const EventRegistry = loadConversationEventRegistry(), events = new EventRegistry(ctx);
-  ctx.provide('connection', {}); ctx.provide('uiConversation', { events });
+  ctx.provide('connection', {}); ctx.provide('uiConversation', { events }); ctx.provide('sessions', {}); ctx.provide('remote', {});
   const originalTool = ctx.slots.entries('conversation.chat.node').find(entry => entry.options.key === 'tool-call');
   const originalTrajectory = ctx.slots.entries('conversation.view').find(entry => entry.options.id === 'trajectory');
   const originalToolSpec = ctx.slots.spec('tool.call.toolview');
@@ -91,6 +91,8 @@ test('real Cordis, SlotRegistry and ConversationEventRegistry register independe
   await fiber; await settle();
   assert.equal(fiber.state, 2);
   assert(ctx.slots.entries('conversation.composer.dock').some(entry => entry.options.id === 'auto-review-history-status'));
+  const usage = ctx.slots.entries('conversation.composer.dock').find(entry => entry.options.id === 'auto-review-usage');
+  assert(usage); assert.equal(usage.options.order, 2); assert.equal(usage.children, undefined);
   const ownChat = ctx.slots.entries('conversation.chat.node').find(entry => entry.options.key === 'auto-review-call-status');
   const ownView = ctx.slots.entries('conversation.view').find(entry => entry.options.id === 'auto-review-trajectory');
   assert(ownChat); assert(ownView); assert.equal(ownChat.children, undefined); assert.equal(ownView.children, undefined);
@@ -103,13 +105,13 @@ test('real Cordis, SlotRegistry and ConversationEventRegistry register independe
   assert(route, 'actual event registry must route existing tool/call records to the new owned kind');
   const event = { type: 'tool/call', seq: 7, data: { callId: 'existing-root-call' } };
   const matched = route.match(event), start = { event, location: { kind: 'step', turn: 1, step: 1 } };
-  assert.equal(matched.id, 'existing-root-call'); assert.equal(matched.role, 'start');
+  assert.equal(matched.id, '7:existing-root-call'); assert.equal(matched.role, 'start');
   const state = route.definition.start({}, start);
   const node = route.definition.buildViewNode({ state, key: 'review:existing-root-call', id: matched.id, start, matches: [start] });
   assert.equal(node.kind, 'auto-review-call-status'); assert.equal(node.target, 'chat');
   assert.equal(node.data.root.callId, event.data.callId); assert.equal(node.anchorSeq, 7.01);
   await fiber.dispose(); await settle();
-  assert(!ctx.slots.entries('conversation.composer.dock').some(entry => entry.options.id === 'auto-review-history-status'));
+  assert(!ctx.slots.entries('conversation.composer.dock').some(entry => ['auto-review-history-status', 'auto-review-usage'].includes(entry.options.id)));
   assert(!ctx.slots.entries('conversation.chat.node').some(entry => entry.options.key === 'auto-review-call-status'));
   assert(!ctx.slots.entries('conversation.view').some(entry => entry.options.id === 'auto-review-trajectory'));
   assert.equal(events.entries().length, 0);
@@ -137,7 +139,7 @@ test('client history store retrieves three preexisting actual Host history recor
   let unsubscribe;
   await new Promise(resolve => { unsubscribe = store.subscribe(resolve); });
   const snapshot = store.getSnapshot();
-  assert.equal(snapshot.records.length, 3);
+  assert.equal(snapshot.records.length, 3); assert.equal(snapshot.summary.totals.records, 3); assert.equal(snapshot.summary.recordOutcomes.denied, 1);
   assert.equal(snapshot.records[1].attempts[0].verdict.reason, 'Persisted refusal reason');
   assert.equal(snapshot.loading, false); assert.equal(snapshot.error, null);
   assert.equal(calls.length, 1); assert.equal(calls[0].endpoint, 'history');

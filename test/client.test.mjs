@@ -19,9 +19,11 @@ function boot() {
     Children: { map(children, fn) { return (Array.isArray(children) ? children : [children]).flat(Infinity).map(fn); } },
     useRef(initial) { const i = cursor++; if (!(i in state)) state[i] = { current: initial }; return state[i]; },
   };
-  const primitives = { Menu: 'native-menu', PermissionIconAutoReviewRegular: 'native-review-icon' };
-  vm.runInNewContext(source, { AbortController, window: { __ModuleLoader__: { load(value) { definition = value; plugin = value.factory(id => { if (id === 'react') return React; assert.equal(id, '@deepseek-ai/dsh-client-ui-primitives'); return primitives; }); } } } });
-  return { plugin, definition, React, primitives, render(props, component = plugin.SettingsSection) { cursor = 0; const node = component(props); while (effects.length) effects.shift()(); return node; } };
+  const listeners = new Map();
+  const document = { body: {}, addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) };
+  const primitives = { Menu: 'native-menu', PermissionIconAutoReviewRegular: 'native-review-icon', IconDatabaseOutlineRegular: 'native-database-icon', useAnchoredPosition: () => ({ top: 20, left: 30 }), useDismissOnOutsidePointer: (_root, _open, close) => { primitives.dismiss = close; } };
+  vm.runInNewContext(source, { AbortController, document, window: { __ModuleLoader__: { load(value) { definition = value; plugin = value.factory(id => { if (id === 'react') return React; if (id === 'react-dom') return { createPortal: node => node }; assert.equal(id, '@deepseek-ai/dsh-client-ui-primitives'); return primitives; }); } } } });
+  return { plugin, definition, React, primitives, listeners, render(props, component = plugin.SettingsSection) { cursor = 0; const node = component(props); while (effects.length) effects.shift()(); return node; } };
 }
 function nodes(root) { if (!root || typeof root !== 'object') return []; return [root, ...(root.props?.children ?? []).flatMap(nodes)]; }
 function byId(root, id) { return nodes(root).find(node => node.props?.id === id); }
@@ -232,67 +234,74 @@ test('read-only profile cannot submit, and held mirror errors stay visible', asy
   assert.equal(io.operations.length, 0);
 });
 
-function statusValue(overrides = {}, coverage = {}) {
-  const reported = overrides.usageReported ?? 2;
-  return { running: true, scope: 'process', audit: 'available',
-    usageCoverage: { inputTokens: reported, outputTokens: reported, totalTokens: reported, cacheReadTokens: reported, cacheWriteTokens: 0, reasoningTokens: reported, ...coverage },
-    totals: { attempts: 3, allows: 1, denies: 1, failures: 1, cancelled: 0, usageReported: reported, inputTokens: 100, outputTokens: 20, totalTokens: 120, cacheReadTokens: 10, cacheWriteTokens: 0, reasoningTokens: 8, ...overrides } };
+function sessionSummary(overrides = {}, coverage = {}) {
+  return { totals: { records: 2, attempts: 3, allows: 1, denies: 1, failures: 1, cancelled: 0, usageReported: 2, inputTokens: 100, outputTokens: 20, totalTokens: 120, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 8, ...overrides },
+    usageCoverage: { inputTokens: 2, outputTokens: 2, totalTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 1, ...coverage },
+    recordOutcomes: { allowed: 1, denied: 1, failed: 0, cancelled: 0, interrupted: 0, reviewing: 0 } };
 }
-test('usage card loads once, refreshes manually, and does not add reasoning to output', async () => {
-  const harness = boot(); let calls = 0;
-  const props = { connection: { rpc: { async call(channel, endpoint, payload, signal) {
-    calls++; assert.equal(channel, '/auto-review-desktop'); assert.equal(endpoint, 'status'); assert.equal(Object.keys(payload).length, 0); assert.ok(signal instanceof AbortSignal);
-    return { ok: true, value: statusValue() };
-  } } }, t: key => key };
-  harness.render(props, harness.plugin.UsageCard); await new Promise(resolve => setImmediate(resolve));
-  let card = harness.render(props, harness.plugin.UsageCard);
-  harness.render(props, harness.plugin.UsageCard);
-  assert.equal(calls, 1);
-  const output = nodes(card).find(node => node.type === 'dt' && node.props.children.includes('usageOutput'));
-  assert.ok(output);
-  assert.ok(nodes(card).some(node => node.type === 'dd' && node.props.children.includes('20')));
-  assert.ok(!nodes(card).some(node => node.type === 'dt' && node.props.children.includes('reasoningTokens')));
-  byId(card, 'ar-usage-refresh').props.onClick(); await new Promise(resolve => setImmediate(resolve));
-  card = harness.render(props, harness.plugin.UsageCard);
-  assert.equal(calls, 2);
-  assert.ok(nodes(card).some(node => node.props?.children?.includes('usageNote')));
+const usageRow = (card, label) => nodes(card).find(node => node.type === 'div' && node.props.children.some(child => child?.type === 'dt' && child.props.children.includes(label)));
+test('settings group every field by topic and never mount a usage card or request process statistics', () => {
+  const harness = boot(), io = propsOf(harness.plugin);
+  const loading = harness.render(io.props);
+  assert(!nodes(loading).some(node => node.type === harness.plugin.UsageCard));
+  const page = harness.render(io.props);
+  assert(!nodes(page).some(node => node.type === harness.plugin.UsageCard));
+  const groups = nodes(page).filter(node => ['section', 'div'].includes(node.type) && node.props.className === 'ar-card');
+  assert.deepEqual(groups.map(node => nodes(node).find(x => x.type === 'h3')?.props.children[0]), ['settingsModel', 'settingsWorkspace', 'settingsDecisions', 'settingsProtection', 'limits']);
+  assert(byId(groups[0], 'ar-reasoningMode')); assert(byId(groups[1], 'ar-workspaceReads')); assert(byId(groups[1], 'ar-workspaceEscalation'));
+  for (const id of ['denialPolicy', 'failurePolicy', 'subagentApproval']) assert(byId(groups[2], `ar-${id}`));
+  assert(byId(groups[3], 'ar-preciseDeletion')); assert(byId(groups[4], 'ar-maxReviewsPerTurn'));
+});
+test('session usage distinguishes review records from retry attempts, and labels partial fields individually', () => {
+  const harness = boot(), t = (key, args) => args ? `${key}:${args.reported}/${args.attempts}` : key;
+  const card = harness.plugin.UsageCard({ summary: sessionSummary(), t });
+  assert(usageRow(card, 'usageRecords').props.children[1].props.children.includes('2'));
+  assert(usageRow(card, 'usageAttempts').props.children[1].props.children.includes('3'));
+  assert(usageRow(card, 'usageOutput').props.children[1].props.children.includes('20'));
+  assert(!usageRow(card, 'usageOutput').props.children[1].props.children.includes('28'));
+  assert(nodes(usageRow(card, 'usageOutput')).some(node => node.type === 'small' && node.props.children.includes('usagePartial:2/3')));
+  assert(usageRow(card, 'usageCache').props.children[1].props.children.includes('usageUnknown'));
+  assert(usageRow(card, 'usageReasoning').props.children[1].props.children.includes('8'));
+  assert.equal(harness.plugin.UsageCard({ summary: undefined, t }), null);
+});
+test('session usage keeps reported zero distinct from missing reports', () => {
+  const harness = boot(), card = harness.plugin.UsageCard({ summary: sessionSummary({}, { cacheReadTokens: 1 }), t: key => key });
+  assert(usageRow(card, 'usageCache').props.children[1].props.children.includes('0'));
+  assert(usageRow(card, 'usageCacheWrite').props.children[1].props.children.includes('usageUnknown'));
 });
 
-test('usage missing all provider reports displays unknown tokens', async () => {
-  const harness = boot();
-  const props = { connection: { rpc: { async call() { return { ok: true, value: statusValue({ usageReported: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 }) }; } } }, t: key => key };
-  harness.render(props, harness.plugin.UsageCard); await new Promise(resolve => setImmediate(resolve));
-  const card = harness.render(props, harness.plugin.UsageCard);
-  assert.equal(nodes(card).filter(node => node.type === 'dd' && node.props.children.includes('usageUnknown')).length, 3);
+test('cancelled and interrupted records contribute to the same failed category shown in the review list', () => {
+  const harness = boot(), summary = sessionSummary();
+  summary.recordOutcomes = { allowed: 0, denied: 0, failed: 1, cancelled: 1, interrupted: 1, reviewing: 0 };
+  const card = harness.plugin.UsageCard({ summary, t: key => key });
+  assert(usageRow(card, 'usageFailures').props.children[1].props.children.includes('3'));
+  assert(usageRow(card, 'usageCancelled').props.children[1].props.children.includes('1'));
+  for (const status of ['failed', 'cancelled', 'interrupted']) {
+    const display = harness.plugin.reviewPresentation({ status, attempts: [] });
+    assert.equal(harness.plugin.permissionDictionaries.zh[`reviewResult_${display.state}`], '失败');
+  }
 });
 
-test('cache usage is unknown when other token fields were reported but cache was not', async () => {
+test('review usage menu opens beside native statistics, updates live, and closes on Escape or outside dismissal', () => {
   const harness = boot();
-  const props = { connection: { rpc: { async call() { return { ok: true, value: statusValue({ cacheReadTokens: 0 }, { cacheReadTokens: 0 }) }; } } }, t: key => key };
-  harness.render(props, harness.plugin.UsageCard); await new Promise(resolve => setImmediate(resolve));
-  const card = harness.render(props, harness.plugin.UsageCard);
-  const cacheRow = nodes(card).find(node => node.type === 'div' && node.props.children.some(child => child?.type === 'dt' && child.props.children.includes('usageCache')));
-  assert.ok(cacheRow.props.children.some(child => child?.type === 'dd' && child.props.children.includes('usageUnknown')));
-  const inputRow = nodes(card).find(node => node.type === 'div' && node.props.children.some(child => child?.type === 'dt' && child.props.children.includes('usageInput')));
-  assert.ok(inputRow.props.children.some(child => child?.type === 'dd' && child.props.children.includes('100')));
-});
-
-test('a reported zero cache value remains a known zero', async () => {
-  const harness = boot();
-  const props = { connection: { rpc: { async call() { return { ok: true, value: statusValue({ cacheReadTokens: 0 }, { cacheReadTokens: 1 }) }; } } }, t: key => key };
-  harness.render(props, harness.plugin.UsageCard); await new Promise(resolve => setImmediate(resolve));
-  const card = harness.render(props, harness.plugin.UsageCard);
-  const cacheRow = nodes(card).find(node => node.type === 'div' && node.props.children.some(child => child?.type === 'dt' && child.props.children.includes('usageCache')));
-  assert.ok(cacheRow.props.children.some(child => child?.type === 'dd' && child.props.children.includes('0')));
-});
-
-test('usage RPC failure is visible and permits manual retry', async () => {
-  const harness = boot();
-  const props = { connection: { rpc: { async call() { return { ok: false, error: { code: 'FORBIDDEN', message: 'Owner access required' } }; } } }, t: key => key };
-  harness.render(props, harness.plugin.UsageCard); await new Promise(resolve => setImmediate(resolve));
-  const card = harness.render(props, harness.plugin.UsageCard);
-  assert.ok(nodes(card).some(node => node.props?.role === 'alert' && node.props.children.some(text => typeof text === 'string' && text.includes('FORBIDDEN: Owner access required'))));
-  assert.equal(byId(card, 'ar-usage-refresh').props.disabled, false);
+  let props = { snapshot: { records: [{}], summary: sessionSummary() }, sessionId: 'session-A', store: {}, t: key => key };
+  let menu = harness.render(props, harness.plugin.ReviewUsageMenu);
+  assert.equal(menu.props['data-composer-stat'], 'auto-review-usage');
+  let trigger = nodes(menu).find(node => node.type === 'button');
+  assert.equal(trigger.props['aria-haspopup'], 'dialog'); assert.equal(trigger.props['aria-expanded'], false);
+  trigger.props.onClick(); menu = harness.render(props, harness.plugin.ReviewUsageMenu);
+  const dialog = nodes(menu).find(node => node.props.role === 'dialog');
+  assert(dialog); assert.equal(dialog.props.style.top, 20);
+  assert.equal(nodes(menu).find(node => node.type === harness.plugin.UsageCard).props.summary, props.snapshot.summary);
+  props = { ...props, snapshot: { ...props.snapshot, summary: sessionSummary({ inputTokens: 300 }) } };
+  menu = harness.render(props, harness.plugin.ReviewUsageMenu);
+  assert.equal(nodes(menu).find(node => node.type === harness.plugin.UsageCard).props.summary.totals.inputTokens, 300);
+  harness.listeners.get('keydown')({ key: 'Escape' }); menu = harness.render(props, harness.plugin.ReviewUsageMenu);
+  assert(!nodes(menu).some(node => node.props.role === 'dialog'));
+  nodes(menu).find(node => node.type === 'button').props.onClick(); harness.render(props, harness.plugin.ReviewUsageMenu);
+  harness.primitives.dismiss(false); menu = harness.render(props, harness.plugin.ReviewUsageMenu);
+  assert(!nodes(menu).some(node => node.props.role === 'dialog'));
+  assert.equal(harness.render({ ...props, snapshot: { records: [], loading: false, error: null } }, harness.plugin.ReviewUsageMenu), null);
 });
 
 function permissionHarness(harness) {

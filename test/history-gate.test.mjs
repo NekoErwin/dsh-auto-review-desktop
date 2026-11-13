@@ -37,6 +37,7 @@ test('gate history persists allow verdict, usage and configured reviewer route',
   assert.equal(row.callId, 'call-1');
   assert.equal(row.rootCallId, 'call-1');
   assert.equal(row.callSeq, f.events.find(event => event.type === 'tool/call').seq);
+  assert.deepEqual(row.arguments, f.exec.arguments);
   assert.equal(row.attempts.length, 1);
   assert.equal(row.attempts[0].provider, 'review');
   assert.equal(row.attempts[0].model, 'cheap');
@@ -79,15 +80,17 @@ test('stale allow remains visible as a failed attempt and never as a final autho
   assert.equal(row.attempts[0].verdict.reason, undefined);
 });
 
-test('retry retains the failed attempt and final verdict in one ordered history record', async t => {
-  const { f, gate, history } = await setup(t, {
+test('retry retains failed partial usage and aggregates each attempt once across persisted snapshots', async t => {
+  const { f, gate, history, directory } = await setup(t, {
     config: { maxRetries: 1 },
     stream: async function* (_request, number) {
       if (number === 1) {
+        yield { type: 'usage', usage: { inputTokens: 3, cacheReadTokens: 0 } };
+        yield { type: 'usage', usage: { inputTokens: 9, cacheReadTokens: 4 } };
         yield { type: 'finish', reason: { kind: 'error', failure: { code: 'TRANSPORT', message: 'connection reset' } } };
         return;
       }
-      yield* answer('{"risk":"low","decision":"allow"}');
+      yield* answer('{"risk":"low","decision":"allow"}', { inputTokens: 11, outputTokens: 7, totalTokens: 18, cacheWriteTokens: 0, reasoningTokens: 2 });
     },
   });
   assert.equal((await gate.gate(f.exec, f.next)).kind, 'allow');
@@ -98,7 +101,20 @@ test('retry retains the failed attempt and final verdict in one ordered history 
   assert(row.attempts[0].code);
   assert.equal(row.attempts[0].verdict, undefined);
   assert.deepEqual(row.attempts[1].verdict, { risk: 'low', decision: 'allow' });
+  assert.deepEqual(row.attempts[0].usage, { inputTokens: 9, cacheReadTokens: 4 });
   assert.deepEqual(f.requests[0].messages, f.requests[1].messages);
+  const live = await history.read(f.session.id);
+  assert.deepEqual(live.summary, {
+    totals: { records: 1, attempts: 2, allows: 1, denies: 0, failures: 1, cancelled: 0, usageReported: 2,
+      inputTokens: 20, outputTokens: 7, totalTokens: 18, cacheReadTokens: 4, cacheWriteTokens: 0, reasoningTokens: 2 },
+    usageCoverage: { inputTokens: 2, outputTokens: 1, totalTokens: 1, cacheReadTokens: 1, cacheWriteTokens: 1, reasoningTokens: 1 },
+    recordOutcomes: { allowed: 1, denied: 0, failed: 0, cancelled: 0, interrupted: 0, reviewing: 0 },
+  });
+  const cold = createReviewHistory(directory);
+  t.after(() => cold.close());
+  const saved = await cold.read(f.session.id);
+  assert.deepEqual(saved.records, [row]);
+  assert.deepEqual(saved.summary, live.summary);
 });
 
 test('invalid reviewer output records a terminal failure without inventing a verdict', async t => {
@@ -133,7 +149,7 @@ test('cancelled review persists cancelled state and ignores a late provider allo
 });
 
 test('gate history binds each PTC child to its actual root and excludes run_code transport', async t => {
-  const { f, gate, history } = await setup(t, { tool: 'run_code', arguments: { code: 'write()' } });
+  const { f, gate, history, directory } = await setup(t, { tool: 'run_code', arguments: { code: 'write()' } });
   assert.equal((await gate.gate(f.exec, f.next)).kind, 'allow');
   assert.deepEqual((await history.read(f.session.id)).records, []);
   for (const [callId, content] of [['inner-1', 'first edit'], ['inner-2', 'second edit']]) {
@@ -147,4 +163,15 @@ test('gate history binds each PTC child to its actual root and excludes run_code
     ['inner-1', 'call-1', 'write'], ['inner-2', 'call-1', 'write'],
   ]);
   assert(rows.every(row => row.status === 'completed' && row.attempts.length === 1));
+  assert.deepEqual(rows.map(row => row.arguments), [
+    { file_path: 'app.js', content: 'first edit' }, { file_path: 'app.js', content: 'second edit' },
+  ]);
+  assert(rows.every(row => !Object.hasOwn(row.arguments, 'code')));
+  const cold = createReviewHistory(directory);
+  t.after(() => cold.close());
+  const saved = await cold.read(f.session.id);
+  assert.deepEqual(saved.records, rows);
+  assert.equal(saved.summary.totals.records, 2);
+  assert.equal(saved.summary.totals.attempts, 2);
+  assert.equal(saved.summary.recordOutcomes.allowed, 2);
 });
