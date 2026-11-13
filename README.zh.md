@@ -1,6 +1,6 @@
 # DSH 审查增强
 
-![](imgs/teaser.png)
+<a href="imgs/teaser.png"><img src="imgs/teaser.png" alt="增强审查预览" width="640"></a>
 
 以 Codex 审查机制为蓝本的可自定义自动审查插件。支持独立审查模型、工作区沙箱、失败回退、删除保护、子代理权限继承，以及审查记录和用量统计。
 
@@ -35,7 +35,7 @@ GitHub 安装：`dsh plugin add github:NekoErwin/dsh-auto-review-desktop#v0.4.10
 | 子代理继承与人工审批 | 原生子代理继承审查模式和回退策略；需要人工审批时逐条出现在主会话 | 原生子代理可继承官方 Auto，但人工审批固定为 `never` 自动拒绝 |
 | 专用审查记录与用量 | 提供持久审查页和会话审查用量汇总 | 只统计会话开销 |
 
-![](imgs/image1.png)
+<a href="imgs/image1.png"><img src="imgs/image1.png" alt="增强审查设置与记录" width="640"></a>
 
 ## 安装
 

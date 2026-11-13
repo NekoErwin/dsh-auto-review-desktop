@@ -1,6 +1,6 @@
 # DSH enhanced review
 
-![](imgs/teaser.png)
+<a href="imgs/teaser.png"><img src="imgs/teaser.png" alt="Enhanced review preview" width="640"></a>
 
 A configurable auto-review plugin inspired by Codex's review approach, with an independent reviewer model, workspace sandboxing, failure fallback, deletion protection, inherited child-agent permissions, review history and usage statistics.
 
@@ -35,7 +35,7 @@ Comparison based on official `@deepseek-ai/dsh-experimental-auto-review` **0.2.2
 | Child-agent inheritance and human approval | Native child agents inherit the review mode and fallback policy; pending human approvals appear individually in the root conversation | Native children can inherit official Auto, but human approval is pinned to `never` (auto-deny) |
 | Dedicated review records and usage | Persistent review page and per-session review-usage summary | Tracks session usage only |
 
-![](imgs/image1.png)
+<a href="imgs/image1.png"><img src="imgs/image1.png" alt="Enhanced review settings and history" width="640"></a>
 
 ## Install
 
