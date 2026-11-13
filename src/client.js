@@ -61,7 +61,7 @@ window.__ModuleLoader__.load({
       usageUnknown: 'Unknown', usageAttempts: 'Review attempts', usageAllows: 'Reviewer allows', usageDenies: 'Reviewer denies', usageFailures: 'Failed', usageCancelled: 'Cancelled',
       usageInput: 'Input tokens', usageOutput: 'Output tokens', usageCache: 'Cache-read tokens', usageReported: 'Attempts reporting usage',
       usageNote: 'Each token total sums only attempts that reported that field and may be partial. Unreported fields are unknown. Reasoning may already be included in output tokens and must not be added again. Reviewer allows/denies describe model verdicts; tools must still pass other permission checks.',
-      review_reviewing: 'Reviewing action…', review_allowed: 'Model allowed', review_denied: 'Auto review denied this action', review_failed: 'Auto review failed', review_interrupted: 'Review interrupted',
+      reviewPassed: 'Review passed', review_reviewing: 'Reviewing action…', review_allowed: 'Model allowed', review_denied: 'Auto review denied this action', review_failed: 'Auto review failed', review_interrupted: 'Review interrupted',
       reviewNoReason: 'The reviewer did not provide a reason.', reviewHumanFallback: 'Sent for human approval; the model denial remains recorded.', reviewAllowNote: 'Model verdict only; execution remains subject to other checks.',
       reviewTab: 'Review trace', reviewInspect: 'Inspect call', reviewHistory: 'Automatic reviews', reviewHistoryHelp: 'Per-call reviewer verdicts and final gate results. Expand a record for model, risk, reason, timing, retries and reported usage. Reasons are the returned decision text, not hidden model reasoning.',
       reviewHistoryLoading: 'Loading review history…', reviewHistoryEmpty: 'No recorded model reviews for this session. Workspace exemptions and human-only approvals do not create model reviews. Reviews before this version are unavailable.',
@@ -120,7 +120,7 @@ window.__ModuleLoader__.load({
       usageUnknown: '未知', usageAttempts: '审查尝试', usageAllows: '模型允许', usageDenies: '模型拒绝', usageFailures: '失败', usageCancelled: '取消',
       usageInput: '输入 token', usageOutput: '输出 token', usageCache: '缓存读取 token', usageReported: '已报告用量的尝试',
       usageNote: '各项 token 仅汇总报告了该字段的尝试，可能只覆盖部分审查；未报告的字段未知。推理 token 可能已计入输出 token，不能重复相加。模型允许／拒绝仅表示审查模型的判定，实际工具仍须通过其他权限检查。',
-      review_reviewing: '正在审查操作…', review_allowed: '模型允许', review_denied: '自动审查拒绝了此操作', review_failed: '自动审查失败', review_interrupted: '审查已中断',
+      reviewPassed: '审查通过', review_reviewing: '正在审查操作…', review_allowed: '模型允许', review_denied: '自动审查拒绝了此操作', review_failed: '自动审查失败', review_interrupted: '审查已中断',
       reviewNoReason: '审查模型未提供拒绝理由。', reviewHumanFallback: '已转交人工审批，模型的拒绝结论仍保留。', reviewAllowNote: '仅表示模型判定允许，执行仍须通过其他检查。',
       reviewTab: '审查轨迹', reviewInspect: '查看调用', reviewHistory: '自动审查记录', reviewHistoryHelp: '逐调用展示模型结论和最终审查门结果。展开记录可查看模型、风险、理由、耗时、重试及已报告用量。理由是模型返回的判定文本，不含隐藏推理。',
       reviewHistoryLoading: '正在读取审查记录…', reviewHistoryEmpty: '此会话没有已记录的模型审查。工作区免审及仅人工审批不会产生模型审查记录；升级前的审查无法补录。',
@@ -203,6 +203,7 @@ window.__ModuleLoader__.load({
 .ar-review-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:2px}.ar-review-title{font-weight:500}.ar-review-reason{white-space:pre-wrap;overflow-wrap:anywhere}.ar-review-hint{font-size:12px;color:var(--dsw-alias-label-secondary)}
 .ar-review-error{color:var(--dsw-alias-state-error-primary)}.ar-review-error .ar-review-dot{background:var(--dsw-alias-state-error-primary)}.ar-review-notice[data-review-state=allowed] .ar-review-dot{background:var(--dsw-alias-state-success-primary)}
 .ar-review-code{flex:none;max-width:35%;overflow-wrap:anywhere;font-size:11px}.ar-review-link{font:inherit;font-size:12px;border:0;background:none;color:var(--dsw-alias-label-secondary);cursor:pointer;padding:0;text-decoration:underline}.ar-review-link:focus-visible,.ar-review-trajectory summary:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
+.ar-review-approved{align-items:center;gap:6px;margin:0 0 2px 22px;min-height:18px;font-size:11px;line-height:16px}.ar-review-approved .ar-review-dot{width:5px;height:5px;margin-top:0}.ar-review-approved .ar-review-title{font-weight:400;white-space:nowrap}.ar-review-approved .ar-review-link{margin-inline-start:auto;flex:none;white-space:nowrap;font-size:11px;line-height:16px;text-decoration:none}.ar-review-approved .ar-review-link:hover{text-decoration:underline}
 .ar-review-trajectory{flex:1;max-height:none;overflow:auto;border-bottom:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px}.ar-review-trajectory>summary{padding:8px 16px;cursor:pointer}.ar-review-ledger{padding:0 16px 12px}.ar-review-ledger p{margin:6px 0;color:var(--dsw-alias-label-secondary)}.ar-review-ledger input{box-sizing:border-box;width:100%;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;padding:6px 8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit}.ar-review-record{border-top:1px solid var(--dsw-alias-border-l1);padding:6px 0}.ar-review-record summary{cursor:pointer;overflow-wrap:anywhere}.ar-review-record pre{white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;max-height:300px;background:var(--dsw-alias-bg-layer-2);padding:8px;border-radius:6px;font:12px/18px monospace}.ar-review-warning{color:var(--dsw-alias-state-warn-primary)}
 `;
       document.head.appendChild(style);
@@ -758,13 +759,16 @@ window.__ModuleLoader__.load({
     }
     function ReviewNotice({ row, t, inspectCall }) {
       const display = reviewPresentation(row);
+      if (display.state === 'allowed') return h('div', { className: 'ar-review-notice ar-review-approved', role: 'status', 'data-review-call': row.callId, 'data-review-state': display.state, title: `${row.tool} · ${row.callId}\n${t('reviewAllowNote')}`, 'aria-label': `${t('reviewPassed')} · ${row.tool}. ${t('reviewAllowNote')}` },
+        h('span', { className: 'ar-review-dot', 'aria-hidden': true }),
+        h('span', { className: 'ar-review-title' }, t('reviewPassed')),
+        inspectCall ? h('button', { type: 'button', className: 'ar-review-link', onClick: () => inspectCall(row.callId), 'aria-label': `${t('reviewInspect')} ${row.tool} ${row.callId}` }, t('reviewInspect')) : null);
       return h('div', { className: `ar-review-notice${display.error ? ' ar-review-error' : ''}`, role: display.error ? 'alert' : 'status', 'data-review-call': row.callId, 'data-review-state': display.state },
         h('span', { className: 'ar-review-dot', 'aria-hidden': true }),
         h('div', { className: 'ar-review-copy' },
           h('span', { className: 'ar-review-title' }, t(`review_${display.state}`), ' · ', row.tool),
           display.reason ? h('span', { className: 'ar-review-reason' }, display.reason) : display.state === 'denied' ? h('span', { className: 'ar-review-reason' }, t('reviewNoReason')) : null,
-          row.gate === 'ask' ? h('span', { className: 'ar-review-reason' }, t('reviewHumanFallback')) : null,
-          display.state === 'allowed' ? h('span', { className: 'ar-review-hint' }, t('reviewAllowNote')) : null),
+          row.gate === 'ask' ? h('span', { className: 'ar-review-reason' }, t('reviewHumanFallback')) : null),
         display.error ? h('code', { className: 'ar-review-code' }, display.state === 'denied' ? 'AUTO_REVIEW_DENIED' : row.code ?? 'AUTO_REVIEW_FAILED') : null,
         inspectCall ? h('button', { type: 'button', className: 'ar-review-link', onClick: () => inspectCall(row.callId), 'aria-label': `${t('reviewInspect')} ${row.tool} ${row.callId}` }, t('reviewInspect')) : null);
     }

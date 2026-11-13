@@ -36,9 +36,20 @@ test('status presentation never describes a stale allow or failed attempt as app
   assert.equal(p.reviewPresentation(row({ status: 'failed', code: 'STALE', attempts: [{ verdict: { decision: 'allow', risk: 'low' } }] })).state, 'failed');
   assert.equal(p.reviewPresentation(row({ status: 'interrupted', attempts: [] })).state, 'interrupted');
   assert.equal(p.reviewPresentation(row({ status: 'completed', gate: 'allow', attempts: [{ verdict: { decision: 'allow', risk: 'low' } }] })).state, 'allowed');
-  const display = p.ReviewNotice({ row: row({ status: 'completed', gate: 'allow', attempts: [{ verdict: { decision: 'allow', risk: 'low' } }] }), t: key => key });
+  let inspected;
+  const display = p.ReviewNotice({ row: row({ status: 'completed', gate: 'allow', attempts: [{ verdict: { decision: 'allow', risk: 'low' } }] }), t: key => key, inspectCall: id => { inspected = id; } });
   assert.equal(display.props.role, 'status'); assert(!display.props.className.includes('ar-review-error'));
-  assert(nodes(display).some(node => node.props.children.includes('reviewAllowNote')));
+  assert.match(display.props.className, /ar-review-approved/);
+  assert.match(display.props.title, /reviewAllowNote/);
+  assert.match(display.props['aria-label'], /reviewAllowNote/);
+  const children = display.props.children;
+  assert.equal(children.length, 3);
+  assert.equal(children[0].props.className, 'ar-review-dot');
+  assert.deepEqual(children[1].props.children, ['reviewPassed']);
+  assert.equal(children[2].type, 'button');
+  assert.deepEqual(children[2].props.children, ['reviewInspect']);
+  assert(!nodes(display).some(node => node.props.children.includes('reviewAllowNote')));
+  children[2].props.onClick(); assert.equal(inspected, 'inner');
 });
 
 test('PTC review notices attach only to the original root call and retain individual child IDs', () => {
