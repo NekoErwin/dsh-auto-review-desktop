@@ -289,6 +289,10 @@ test('review usage menu opens beside native statistics, updates live, and closes
   assert.equal(menu.props['data-composer-stat'], 'auto-review-usage');
   let trigger = nodes(menu).find(node => node.type === 'button');
   assert.equal(trigger.props['aria-haspopup'], 'dialog'); assert.equal(trigger.props['aria-expanded'], false);
+  assert.equal(trigger.props.children[0].type, 'native-review-icon');
+  assert.equal(trigger.props.children[1], '120 tok');
+  assert.match(trigger.props['aria-label'], /usageTitle: 120 tok/);
+  assert.match(trigger.props.title, /usagePartial/);
   trigger.props.onClick(); menu = harness.render(props, harness.plugin.ReviewUsageMenu);
   const dialog = nodes(menu).find(node => node.props.role === 'dialog');
   assert(dialog); assert.equal(dialog.props.style.top, 20);
@@ -302,6 +306,20 @@ test('review usage menu opens beside native statistics, updates live, and closes
   harness.primitives.dismiss(false); menu = harness.render(props, harness.plugin.ReviewUsageMenu);
   assert(!nodes(menu).some(node => node.props.role === 'dialog'));
   assert.equal(harness.render({ ...props, snapshot: { records: [], loading: false, error: null } }, harness.plugin.ReviewUsageMenu), null);
+});
+
+test('review usage trigger formats totals and distinguishes zero from unavailable data', () => {
+  const harness = boot();
+  const props = { snapshot: { records: [{}], summary: sessionSummary() }, sessionId: 'session-A', store: {}, t: key => key };
+  const triggerFor = snapshot => nodes(harness.render({ ...props, snapshot }, harness.plugin.ReviewUsageMenu)).find(node => node.type === 'button');
+  for (const [value, expected] of [[0, '0 tok'], [999, '999 tok'], [12200, '12.2K tok'], [517000, '517K tok'], [1200000, '1.2M tok']]) {
+    const trigger = triggerFor({ ...props.snapshot, summary: sessionSummary({ totalTokens: value }, { totalTokens: 3 }) });
+    assert.equal(trigger.props.children[1], expected);
+    assert.equal(trigger.props.title, `usageTitle: ${value.toLocaleString()} tok`);
+  }
+  assert.equal(triggerFor({ ...props.snapshot, summary: sessionSummary({}, { totalTokens: 0 }) }).props.children[1], 'usageUnknown');
+  assert.equal(triggerFor({ records: [], loading: true }).props.children[1], '…');
+  assert.equal(triggerFor({ records: [], error: 'offline' }).props.children[1], 'usageUnknown');
 });
 
 function permissionHarness(harness) {
@@ -411,6 +429,83 @@ test('presentation preserves official Auto confirmation and selection behavior',
   const confirmation = nodes(tree).find(node => node.props?.title === 'auto.confirm.title');
   assert(confirmation);assert.equal(confirmation.props.description, 'auto.confirm.description');
   confirmation.props.onConfirm();assert.deepEqual(selected, ['auto']);adapter.stop();
+});
+
+test('settings notices already on screen follow language changes without losing drafts or raw diagnostics', async () => {
+  for (const outcome of ['saved', 'saveFailed', 'conflict', 'reloadFailed']) {
+    const harness = boot(), io = propsOf(harness.plugin);
+    let language = 'en';
+    io.props.t = key => harness.plugin.permissionDictionaries[language][key];
+    harness.render(io.props); let page = harness.render(io.props);
+    byId(page, 'ar-timeoutMs').props.onChange({ target: { value: '12000' } });
+    if (outcome === 'saveFailed') io.props.form.mutate = async () => { throw Error('RAW_PROVIDER_DIAGNOSTIC'); };
+    if (outcome === 'conflict') io.change({ revision: 8 });
+    if (outcome === 'reloadFailed') io.props.mirror.load = async () => { throw Error('RAW_RELOAD_DIAGNOSTIC'); };
+    page = harness.render(io.props);
+    if (outcome === 'reloadFailed') await nodes(page).find(node => node.type === 'button' && node.props.children.includes(io.props.t('reload'))).props.onClick();
+    else await page.props.onSubmit({ preventDefault() {} });
+    // Reload's click deliberately starts a void async action.
+    await Promise.resolve(); await Promise.resolve();
+    page = harness.render(io.props);
+    const english = harness.plugin.permissionDictionaries.en[outcome];
+    assert(textOf(page).includes(english), outcome);
+    language = 'zh'; page = harness.render(io.props);
+    assert(textOf(page).includes(harness.plugin.permissionDictionaries.zh[outcome]), outcome);
+    assert(!textOf(page).includes(english), outcome);
+    assert.equal(byId(page, 'ar-timeoutMs').props.value, 12000);
+    if (outcome === 'saveFailed') assert(textOf(page).includes('RAW_PROVIDER_DIAGNOSTIC'));
+    if (outcome === 'reloadFailed') assert(textOf(page).includes('RAW_RELOAD_DIAGNOSTIC'));
+  }
+});
+
+test('Danger zone previews scope and requires exact confirmation before one destructive request', async () => {
+  const harness = boot(), calls = []; let language = 'en';
+  const done = Promise.withResolvers();
+  const props = { connection: { rpc: { async call(channel, endpoint, input) {
+    calls.push({ channel, endpoint, input });
+    return endpoint === 'cleanup-preview' ? { ok: true, value: { token: 'once', target: '/profile/.plugin-data/dsh-auto-review-desktop', files: 2, bytes: 40 } } : done.promise;
+  } } }, t: key => harness.plugin.permissionDictionaries[language][key] };
+  const render = () => harness.render(props, harness.plugin.DangerZone);
+  let page = render(); assert.equal(calls.length, 0);
+  await byId(page, 'ar-cleanup-preview').props.onClick(); page = render();
+  assert.equal(calls[0].endpoint, 'cleanup-preview');
+  assert(textOf(page).includes('/profile/.plugin-data/dsh-auto-review-desktop'));
+  assert.equal(byId(page, 'ar-cleanup-confirm').props.disabled, true);
+  byId(page, 'ar-cleanup-confirmation').props.onChange({ target: { value: 'delete' } }); page = render();
+  await byId(page, 'ar-cleanup-confirm').props.onClick(); assert.equal(calls.length, 1);
+  byId(page, 'ar-cleanup-confirmation').props.onChange({ target: { value: 'DELETE' } }); page = render();
+  let prevented = false; byId(page, 'ar-cleanup-confirmation').props.onKeyDown({ key: 'Enter', preventDefault() { prevented = true; } }); assert(prevented);
+  const button = byId(page, 'ar-cleanup-confirm'); const first = button.props.onClick(); await button.props.onClick();
+  assert.equal(calls.length, 2); assert.equal(calls[1].input.token, 'once'); assert.equal(calls[1].input.confirmation, 'DELETE');
+  assert.deepEqual(Object.keys(calls[1].input).sort(), ['confirmation', 'token']);
+  done.resolve({ ok: true, value: { cleaned: true } }); await first;
+  language = 'zh'; page = render(); assert(textOf(page).includes(harness.plugin.permissionDictionaries.zh.cleanupSuccess));
+  assert(!byId(page, 'ar-cleanup-confirm')); assert(!byId(page, 'ar-cleanup-preview'));
+});
+
+test('Danger zone cancellation never deletes and failures retain no reusable confirmation', async () => {
+  const harness = boot(); const calls = [];
+  const props = { t: key => key, connection: { rpc: { async call(_channel, endpoint) {
+    calls.push(endpoint); return endpoint === 'cleanup-preview' ? { ok: true, value: { token: 'once', target: '/profile/data', files: 1, bytes: 5 } } : { ok: false, error: { code: 'CONFIRMATION_REQUIRED' } };
+  } } } };
+  const render = () => harness.render(props, harness.plugin.DangerZone);
+  await byId(render(), 'ar-cleanup-preview').props.onClick(); let page = render();
+  await nodes(page).find(node => node.type === 'button' && node.props.children.includes('cleanupCancel')).props.onClick();
+  assert.equal(calls.length, 1); assert(!byId(render(), 'ar-cleanup-confirm'));
+  await byId(render(), 'ar-cleanup-preview').props.onClick(); page = render();
+  byId(page, 'ar-cleanup-confirmation').props.onChange({ target: { value: 'DELETE' } }); page = render();
+  await byId(page, 'ar-cleanup-confirm').props.onClick(); page = render();
+  assert(textOf(page).includes('cleanupExpired')); assert(!byId(page, 'ar-cleanup-confirmation'));
+});
+
+test('all Chinese and English UI keys and interpolation parameters match', () => {
+  const { permissionDictionaries: { en, zh } } = boot().plugin;
+  assert.deepEqual(Object.keys(en).sort(), Object.keys(zh).sort());
+  for (const key of Object.keys(en)) {
+    assert.equal(typeof en[key], 'string'); assert.equal(typeof zh[key], 'string');
+    assert(en[key].trim()); assert(zh[key].trim());
+    assert.deepEqual(en[key].match(/\{\w+\}/g) ?? [], zh[key].match(/\{\w+\}/g) ?? [], key);
+  }
 });
 
 test('localized catalog keeps host data immutable and returns stable snapshots', () => {

@@ -41,7 +41,7 @@ export function summarizeReviewHistory(records) {
 /** Display-only, profile-owned records. Never consulted to authorize an action. */
 export function createReviewHistory(profileHome, logger) {
   const cells = new Map();
-  let closed = false, available = Boolean(profileHome);
+  let closed = false, purging = false, cleared = false, clearRevision = 0, available = Boolean(profileHome);
   const directory = profileHome && join(profileHome, '.plugin-data', 'dsh-auto-review-desktop', 'history');
   const filename = id => join(directory, `${createHash('sha256').update(id).digest('hex')}.jsonl`);
   const warn = () => { available = false; logger?.warn('auto-review-desktop: review display history is unavailable'); };
@@ -67,6 +67,7 @@ export function createReviewHistory(profileHome, logger) {
   }
   function publish(cell) { cell.revision++; for (const notify of [...cell.listeners]) notify(); }
   function save(cell, row) {
+    if (closed) return;
     const copy = structuredClone(row);
     cell.pending = cell.pending.then(() => cell.loaded).then(async () => {
       cell.rows.set(copy.id, copy); publish(cell);
@@ -90,21 +91,33 @@ export function createReviewHistory(profileHome, logger) {
       };
     },
     async read(sessionId) {
+      if (cleared) return { revision: clearRevision, available: false, closed: true, records: [], summary: summarizeReviewHistory([]) };
       const cell = cellFor(sessionId); await cell.pending; await cell.loaded;
+      if (cleared) return this.read(sessionId);
       const records = [...cell.rows.values()];
-      return { revision: cell.revision, available, closed, records, summary: summarizeReviewHistory(records) };
+      return { revision: cell.revision, available, closed: closed && !purging, records, summary: summarizeReviewHistory(records) };
     },
     async watch(sessionId, revision, signal) {
+      if (cleared) return this.read(sessionId);
       const cell = cellFor(sessionId); await cell.pending; await cell.loaded;
-      if (!closed && !signal?.aborted && cell.revision === revision) await new Promise(resolve => {
+      if ((!closed || purging) && !signal?.aborted && cell.revision === revision) await new Promise(resolve => {
         let timer;
         const done = () => { clearTimeout(timer); cell.listeners.delete(done); signal?.removeEventListener('abort', done); resolve(); };
         cell.listeners.add(done); signal?.addEventListener('abort', done, { once: true });
         timer = setTimeout(done, 25000);
-        if (closed || signal?.aborted || cell.revision !== revision) done();
+        if ((closed && !purging) || signal?.aborted || cell.revision !== revision) done();
       });
       return this.read(sessionId);
     },
-    async close() { closed = true; for (const cell of cells.values()) publish(cell); await Promise.all([...cells.values()].map(cell => cell.pending)); },
+    async close({ notify = true } = {}) { closed = true; if (notify && !purging) for (const cell of cells.values()) publish(cell); await Promise.all([...cells.values()].map(cell => cell.pending)); },
+    async purge() {
+      purging = true;
+      await this.close({ notify: false });
+      await Promise.all([...cells.values()].map(cell => cell.loaded));
+      clearRevision = Math.max(0, ...[...cells.values()].map(cell => cell.revision)) + 1;
+      cleared = true; purging = false; available = false;
+      for (const cell of cells.values()) { cell.rows.clear(); publish(cell); }
+      cells.clear();
+    },
   };
 }

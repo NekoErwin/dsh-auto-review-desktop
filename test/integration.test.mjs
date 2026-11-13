@@ -9,12 +9,13 @@ import { fixture, answer } from './helpers.mjs';
 
 test('real Cordis mounts and disposes native settings, RPC and an independent gate',async()=>{
   const ctx=new Context();const registered=new Map();let settings=0;let rpc;let promptContext;
+  const browserPeer={id:'browser',principal:{kind:'owner'}};
   const f=fixture();
   const presets=f.ctx.permissionPresets.presets;
   for(const [key,value] of Object.entries({...f.ctx,
     settings:{configure(){assert.equal(settings,0);settings++;return()=>settings--;}},
     commands:{register(def){registered.set(def.name,def);return()=>registered.delete(def.name);}},
-    connection:{register(owner,channel,handler){assert.equal(typeof owner.webServer.register,'function');assert.equal(channel,'/auto-review-desktop');rpc=handler;return()=>{rpc=undefined;};}},
+    connection:{browserPeer,register(owner,channel,handler){assert.equal(typeof owner.webServer.register,'function');assert.equal(channel,'/auto-review-desktop');rpc=handler;return()=>{rpc=undefined;};}},
     webServer:{register(){return()=>{};}},
     systemPrompt:{getContextOrder:()=>0,context(def){assert(['auto-review-desktop:delegation','auto-review-desktop:workspace-requests'].includes(def.name));if(def.name==='auto-review-desktop:delegation')promptContext=def;return()=>{if(def.name==='auto-review-desktop:delegation')promptContext=undefined;};}},
     tools:{},agents:{get(){},isOwnedBy(){return false;}},permissionPresets:{...f.ctx.permissionPresets,registerAuto(){throw Error('Official Auto must remain independent');}}
@@ -23,6 +24,11 @@ test('real Cordis mounts and disposes native settings, RPC and an independent ga
   assert.equal(fiber.state,2);assert(presets['auto-review-desktop']);assert.equal(settings,1);assert.equal(typeof rpc,'function');assert(promptContext);assert.equal(promptContext.text({agent:f.agent}), '');
   assert.equal((await rpc('status',{},null,{principal:{kind:'guest'}})).ok,false);
   const view=await rpc('status',{},null,{principal:{kind:'owner'}});assert(view.ok);assert(!('recent'in view.value));assert(!('sessionId'in view.value));
+  assert.equal((await rpc('cleanup-preview',{},null,{id:'api',principal:{kind:'owner'}})).error.code,'FORBIDDEN');
+  assert.equal((await rpc('cleanup',{},null,{principal:{kind:'guest'}})).error.code,'FORBIDDEN');
+  assert.equal((await rpc('cleanup-preview',{},null,browserPeer)).error.code,'NO_PROFILE');
+  assert.equal((await rpc('cleanup',{confirmation:'DELETE'},null,browserPeer)).error.code,'CONFIRMATION_REQUIRED');
+  assert(!registered.has('auto-review-cleanup'));
   assert.equal((await rpc('history',{sessionId:String(f.session.id)},null,{principal:{kind:'guest'}})).ok,false);
   assert.equal((await rpc('history',{sessionId:'../invalid/path'},null,{principal:{kind:'owner'}})).ok,true); // ID is hashed, never used as a filesystem path.
   assert.equal((await rpc('history',{sessionId:''},null,{principal:{kind:'owner'}})).ok,false);

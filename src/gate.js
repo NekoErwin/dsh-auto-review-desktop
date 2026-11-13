@@ -13,6 +13,7 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
   const lifecycle=new AbortController();
   const budget=new ReviewBudget();
   const active=new Set();
+  const stoppingSessions=new Set();
   const shownBySession=new WeakMap();
   let accepting=true;
   const isAuto=isDesktopReview;
@@ -139,31 +140,32 @@ export function createReviewGate(ctx, readConfig, {stats=new ReviewStats(), snap
       active.delete(completion.promise);completion.resolve();
     }
   }
-  async function close({applicationShutdown=false}={}) {
+  async function close({applicationShutdown=false,strict=false}={}) {
+    let shutdownFailed=false;
     accepting=false;
     workspace.close();
     lifecycle.abort(new ReviewError('CANCELLED','Review integration disposed'));
     // Downgrade our sessions before removing the preset and gate. Official Auto is untouched.
     try {
-      if(!applicationShutdown) for(const session of ctx.sessions.list()) {
-        try {
-          if(!isAuto(session))continue;
-          // Native cancel synchronously aborts the turn (including scheduler
-          // queues) and clears pending inbox work. Do not await whenIdle here:
-          // a tool may be unloading its own reviewer.
-          ctx.agents?.get?.(session.id)?.cancel?.({kind:'hook',reason:'Enhanced review is unloading; retry after selecting a permission mode.'});
-          setSandboxMode(session,'workspace-write');
-          setApprovalPolicy(session,'ask');
-        } catch {
-          // A detached/disposed Session cannot execute new tools. Contain cleanup faults so all registrations are removed.
-          ctx.logger?.warn('auto-review-desktop: could not downgrade a closing Session');
+      if(!applicationShutdown) {
+        for(const session of ctx.sessions.list())if(isAuto(session))stoppingSessions.add(session);
+        for(const session of stoppingSessions) {
+          // Retain failures across retries even after a partial downgrade removed the enhanced identity.
+          let stopped=true;
+          const attempt=operation=>{try{operation();}catch{stopped=false;shutdownFailed=true;ctx.logger?.warn('auto-review-desktop: could not stop or downgrade a closing Session');}};
+          attempt(()=>ctx.agents?.get?.(session.id)?.cancel?.({kind:'hook',reason:'Enhanced review is unloading; retry after selecting a permission mode.'}));
+          attempt(()=>setSandboxMode(session,'workspace-write'));
+          attempt(()=>setApprovalPolicy(session,'ask'));
+          if(stopped)stoppingSessions.delete(session);
         }
       }
     } finally {await Promise.allSettled([...active]);}
+    if(strict && shutdownFailed)throw new ReviewError('STOP_FAILED','Some enhanced sessions could not be stopped or downgraded; data was not deleted.');
   }
   const workspace=createWorkspaceRouter(ctx,readConfig,review,()=>accepting);
   async function gate(exec,next) {
     if(!exec.agent || (!exec.parent && exec.name==='run_code'))return next();
+    if(!accepting && isAuto(exec.agent.session))return {kind:'deny',reason:'[auto-review-desktop] Review has stopped. Reload the plugin before selecting enhanced review again.'};
     return desktopMode(exec.agent.session)==='workspace'?workspace.gate(exec,next):review(exec,next);
   }
   return {gate,execute:workspace.execute,approval:workspace.approval,release:workspace.release,close,stats,budget,get accepting(){return accepting;}};

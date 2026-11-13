@@ -1,8 +1,13 @@
 {
   "name": "dsh-auto-review-desktop",
-  "version": "0.4.9",
+  "version": "0.4.10",
   "type": "module",
-  "description": "Independent DSH Desktop authorization review with bounded execution and native settings",
+  "description": "Independent DSH authorization review with bounded execution, sandbox modes and bilingual settings",
+  "author": "NekoErwin",
+  "repository": { "type": "git", "url": "git+https://github.com/NekoErwin/dsh-auto-review-desktop.git" },
+  "homepage": "https://github.com/NekoErwin/dsh-auto-review-desktop#readme",
+  "bugs": { "url": "https://github.com/NekoErwin/dsh-auto-review-desktop/issues" },
+  "keywords": ["dsh", "dsh-plugin", "auto-review", "approval", "sandbox"],
   "main": "./src/index.js",
   "exports": {
     ".": "./src/index.js",
@@ -19,25 +24,28 @@
     "cordis.patch.yml",
     "LICENSE",
     "NOTICE.md",
+    "README.md",
     "README.zh.md",
+    "docs",
+    "imgs",
     "locale",
     "icon.svg"
   ],
   "license": "MIT",
   "engines": {
-    "dsh": "0.2.2-rc.1"
+    "dsh": ">=0.2.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.1.0",
     "@deepseek-ai/schemastery": "~3.19.0",
-    "@deepseek-ai/dsh-sandbox-policy": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-user-approval": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-llm": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-util-values": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-permission-presets": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-tools": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-fs-patch": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-subagent": "0.2.2-rc.1"
+    "@deepseek-ai/dsh-sandbox-policy": ">=0.2.0",
+    "@deepseek-ai/dsh-user-approval": ">=0.2.0",
+    "@deepseek-ai/dsh-llm": ">=0.2.0",
+    "@deepseek-ai/dsh-util-values": ">=0.2.0",
+    "@deepseek-ai/dsh-permission-presets": ">=0.2.0",
+    "@deepseek-ai/dsh-tools": ">=0.2.0",
+    "@deepseek-ai/dsh-fs-patch": ">=0.2.0",
+    "@deepseek-ai/dsh-subagent": ">=0.2.0"
   },
   "dsh": {
     "bundle": {
@@ -57,7 +65,9 @@
   },
   "scripts": {
     "test": "node --import ./test/runtime-loader.mjs --test --test-isolation=none test/*.test.mjs",
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "check:package": "node scripts/check-package.mjs",
+    "pack:release": "node scripts/pack-release.mjs"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {

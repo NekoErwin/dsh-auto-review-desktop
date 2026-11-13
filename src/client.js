@@ -4,13 +4,26 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react');
     const { createElement: h, useState, useEffect, useRef, useSyncExternalStore, cloneElement, isValidElement, Children } = React;
-    const { Menu, PermissionIconAutoReviewRegular, IconDatabaseOutlineRegular, useAnchoredPosition, useDismissOnOutsidePointer } = require('@deepseek-ai/dsh-client-ui-primitives');
+    const { Menu, PermissionIconAutoReviewRegular, useAnchoredPosition, useDismissOnOutsidePointer } = require('@deepseek-ai/dsh-client-ui-primitives');
     const { createPortal } = require('react-dom');
     const NS = 'autoReviewDesktop';
     const FIELDS = ['routeMode', 'provider', 'model', 'reasoningMode', 'reasoningEffort', 'timeoutMs', 'maxOutputTokens', 'maxInputChars', 'maxReviewsPerTurn', 'maxRetries', 'failurePolicy', 'preciseDeletion', 'workspaceEscalation', 'denialPolicy', 'subagentApproval', 'workspaceReads'];
     const DEFAULTS = { routeMode: 'follow', provider: '', model: '', reasoningMode: 'low', reasoningEffort: '', timeoutMs: 60000, maxOutputTokens: 2048, maxInputChars: 120000, maxReviewsPerTurn: 100, maxRetries: 0, failurePolicy: 'deny', preciseDeletion: true, workspaceEscalation: 'ask', denialPolicy: 'deny', subagentApproval: 'inherit', workspaceReads: 'allow' };
     const LIMITS = { timeoutMs: [1000, 180000], maxOutputTokens: [256, 16384], maxInputChars: [4000, 1000000], maxReviewsPerTurn: [1, 1000], maxRetries: [0, 1] };
     const en = {
+      dangerZone: 'Danger zone', cleanupTitle: 'Clear local data',
+      cleanupHelp: 'Before uninstalling, stop other DSH instances using this profile. Cleanup stops enhanced review in this instance and permanently deletes this profile’s review history and statistics logs. Settings, credentials, conversations and other plugins are kept.',
+      cleanupPreview: 'Review cleanup scope', cleanupPreparing: 'Inspecting local data…',
+      cleanupScope: 'Directory to delete', cleanupCount: '{files} files · {bytes} bytes',
+      cleanupConfirmHelp: 'This cannot be undone. Type DELETE to stop review and clear this data. Reload the plugin before using enhanced review again.',
+      cleanupConfirmLabel: 'Type DELETE to confirm', cleanupConfirm: 'Stop review and delete data', cleanupCancel: 'Cancel', cleanupBusy: 'Stopping review and deleting…',
+      cleanupSuccess: 'Local data was cleared. Enhanced review is stopped. You can now remove the plugin; reload it before using it again.',
+      cleanupFailed: 'Cleanup did not complete. Some data may remain. If review was stopped, reload the plugin before using it again. Inspect the scope again to retry.',
+      cleanupUnsafe: 'Cleanup refused because a data directory contains a link, changed unexpectedly, or contains an unsupported file. Inspect the displayed locations before retrying.',
+      cleanupNoProfile: 'No persistent profile directory is available. There is no supported cleanup target.',
+      cleanupStopTimeout: 'Review shutdown timed out. Files were not deleted. Restart DSH before trying cleanup again.',
+      cleanupExpired: 'Confirmation expired or changed in another page. Inspect the cleanup scope again.',
+      cleanupUnavailable: 'Cleanup is unavailable. Reconnect the authenticated DSH settings page.',
       permissionFullLabel: 'Auto review (Full access)', permissionWorkspaceLabel: 'Auto review (Workspace)',
       permissionFullBadge: 'ENHANCED', permissionWorkspaceBadge: 'ENHANCED',
       permissionFullDescription: 'Review each action with your configured model while running without a sandbox. Uses additional tokens.',
@@ -74,6 +87,19 @@ window.__ModuleLoader__.load({
       reviewLoadFailed: 'Review display could not connect. No conclusion can be inferred.', reviewReload: 'Reconnect', reviewMemoryOnly: 'History storage is unavailable; records may be limited to this Host run.',
     };
     const zh = {
+      dangerZone: '危险区域（Danger zone）', cleanupTitle: '清理本地数据',
+      cleanupHelp: '卸载前请先停止使用同一 profile 的其他 DSH 实例。清理会停止本实例的增强审查，并永久删除当前 profile 的本插件审查历史和统计日志；保留设置、凭据、会话和其他插件。',
+      cleanupPreview: '查看清理范围', cleanupPreparing: '正在检查本地数据…',
+      cleanupScope: '将删除的目录', cleanupCount: '{files} 个文件 · {bytes} 字节',
+      cleanupConfirmHelp: '此操作不可撤销。输入 DELETE 后停止审查并删除上述数据。继续使用增强审查前需重载插件。',
+      cleanupConfirmLabel: '输入 DELETE 确认', cleanupConfirm: '停止审查并删除数据', cleanupCancel: '取消', cleanupBusy: '正在停止审查并删除…',
+      cleanupSuccess: '本地数据已清理，增强审查已停止。现在可以移除插件；再次使用前请重载插件。',
+      cleanupFailed: '清理未完成，可能仍有数据残留。若审查已停止，再次使用前需重载插件。请重新检查清理范围后重试。',
+      cleanupUnsafe: '数据目录含链接、发生非预期变化或含不支持的文件，已拒绝自动清理。请核查显示的路径后再重试。',
+      cleanupNoProfile: '当前没有可用的持久 profile 目录，无法确定受支持的清理目标。',
+      cleanupStopTimeout: '停止审查超时，未删除磁盘文件。请重启 DSH 后再尝试清理。',
+      cleanupExpired: '确认已过期或被其他页面替换，请重新检查清理范围。',
+      cleanupUnavailable: '清理当前不可用，请重新连接已认证的 DSH 设置页面。',
       permissionFullLabel: '自动审查（完全访问）', permissionWorkspaceLabel: '自动审查（工作区）',
       permissionFullBadge: '增强', permissionWorkspaceBadge: '增强',
       permissionFullDescription: '无沙箱运行，按配置的模型逐次审查，会消耗额外 token。',
@@ -170,6 +196,9 @@ window.__ModuleLoader__.load({
 .ar-permission-label{display:flex;flex-direction:column;gap:3px;max-width:290px;white-space:normal;padding:2px 0}
 .ar-permission-heading{display:inline-flex;align-items:center;gap:5px;font:inherit;line-height:20px}
 .ar-permission-badge{flex:none;color:var(--dsw-alias-label-tertiary);font-size:8px;font-weight:500;line-height:10px;letter-spacing:.2px}
+.ar-danger-zone{border-color:var(--dsw-alias-state-error-primary)}
+.ar-danger-zone h3,.ar-danger-button{color:var(--dsw-alias-state-error-primary)}
+.ar-cleanup-path{display:block;overflow-wrap:anywhere;white-space:pre-wrap}
 .ar-permission-description{color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:400;line-height:18px}
 .ar-permission-trigger-icon{display:inline-flex;flex:none;align-items:center}
 .ar-permission-trigger-icon svg{width:14px;height:14px}
@@ -240,7 +269,56 @@ window.__ModuleLoader__.load({
         h('p', null, t('usageNote')));
     }
 
-    function SettingsSection({ form, mirror, catalog, t }) {
+    function DangerZone({ connection, t }) {
+      const [scope, setScope] = useState(null), [confirmation, setConfirmation] = useState('');
+      const [phase, setPhase] = useState('idle'), [error, setError] = useState(null);
+      const running = useRef(false), lifecycle = useRef(null);
+      useEffect(() => {
+        lifecycle.current = new AbortController();
+        return () => { lifecycle.current?.abort(); };
+      }, []);
+      const request = async (endpoint, payload) => {
+        if (!connection?.rpc?.call) throw { code: 'UNAVAILABLE' };
+        const response = await connection.rpc.call('/auto-review-desktop', endpoint, payload, lifecycle.current?.signal);
+        if (!response.ok) throw response.error;
+        return response.value;
+      };
+      const messageKey = code => code === 'NO_PROFILE' ? 'cleanupNoProfile' : code === 'UNSAFE_PATH' ? 'cleanupUnsafe'
+        : code === 'STOP_TIMEOUT' ? 'cleanupStopTimeout' : code === 'CONFIRMATION_REQUIRED' ? 'cleanupExpired' : code === 'FORBIDDEN' || code === 'UNAVAILABLE' ? 'cleanupUnavailable' : 'cleanupFailed';
+      const preview = async () => {
+        if (running.current) return;
+        running.current = true; setPhase('previewing'); setError(null); setScope(null); setConfirmation('');
+        try { const value = await request('cleanup-preview', {}); if (!lifecycle.current?.signal.aborted) { setScope(value); setPhase('confirm'); } }
+        catch (failure) { if (!lifecycle.current?.signal.aborted) { setError(messageKey(failure?.code)); setPhase('idle'); } }
+        finally { running.current = false; }
+      };
+      const clean = async () => {
+        if (running.current || !scope || confirmation !== 'DELETE') return;
+        running.current = true; setPhase('cleaning'); setError(null);
+        try { const value = await request('cleanup', { token: scope.token, confirmation }); if (!value?.cleaned) throw { code: 'CLEANUP_FAILED' };
+          if (!lifecycle.current?.signal.aborted) { setPhase('done'); setScope(null); setConfirmation(''); } }
+        catch (failure) { if (!lifecycle.current?.signal.aborted) { setError(messageKey(failure?.code)); setPhase('idle'); setScope(null); setConfirmation(''); } }
+        finally { running.current = false; }
+      };
+      const busy = phase === 'previewing' || phase === 'cleaning';
+      return h('section', { className: 'ar-card ar-danger-zone', 'aria-labelledby': 'ar-danger-title' },
+        h('h3', { id: 'ar-danger-title' }, t('dangerZone')), h('h4', null, t('cleanupTitle')), h('p', { className: 'ar-help' }, t('cleanupHelp')),
+        error ? h('p', { role: 'alert', className: 'ar-error' }, t(error)) : null,
+        phase === 'done' ? h('p', { role: 'status' }, t('cleanupSuccess')) :
+          h('button', { type: 'button', id: 'ar-cleanup-preview', disabled: busy || !connection, onClick: preview }, t(phase === 'previewing' ? 'cleanupPreparing' : 'cleanupPreview')),
+        scope ? h('div', { role: 'group', 'aria-label': t('cleanupTitle') },
+          h('p', null, t('cleanupScope')), ...(scope.targets ?? [scope.target]).map(path => h('code', { key: path, className: 'ar-cleanup-path' }, path)),
+          h('p', { className: 'ar-help' }, t('cleanupCount', { files: scope.files, bytes: scope.bytes })),
+          h('p', { className: 'ar-warning' }, t('cleanupConfirmHelp')),
+          h('label', { htmlFor: 'ar-cleanup-confirmation' }, t('cleanupConfirmLabel')),
+          h('input', { id: 'ar-cleanup-confirmation', autoComplete: 'off', spellCheck: false, value: confirmation, disabled: busy,
+            onChange: event => setConfirmation(event.target.value), onKeyDown: event => { if (event.key === 'Enter') event.preventDefault(); } }),
+          h('div', { className: 'ar-actions' },
+            h('button', { type: 'button', id: 'ar-cleanup-confirm', className: 'ar-danger-button', disabled: busy || confirmation !== 'DELETE', onClick: clean }, t(phase === 'cleaning' ? 'cleanupBusy' : 'cleanupConfirm')),
+            h('button', { type: 'button', disabled: busy, onClick: () => { setScope(null); setConfirmation(''); setPhase('idle'); } }, t('cleanupCancel')))) : null);
+    }
+
+    function SettingsSection({ form, mirror, catalog, connection, t }) {
       const snapshot = useSyncExternalStore(fn => form.subscribe(fn), () => form.getSnapshot());
       const mirrored = useSyncExternalStore(fn => mirror.subscribe(fn), () => mirror.getSnapshot());
       const models = useSyncExternalStore(fn => catalog.store.subscribe(fn), () => catalog.store.getSnapshot());
@@ -273,32 +351,36 @@ window.__ModuleLoader__.load({
         setBusy(true); setNotice(null);
         try {
           await mirror.load();
-          if (mirror.getSnapshot().status !== 'ready' || mirror.getSnapshot().error) throw new Error(mirror.getSnapshot().error || t('reloadFailed'));
+          if (mirror.getSnapshot().status !== 'ready' || mirror.getSnapshot().error) {
+            setNotice({ kind: 'error', key: 'reloadFailed', detail: mirror.getSnapshot().error || undefined }); return;
+          }
           const latest = form.getSnapshot();
-          if (latest.status !== 'ready' || latest.value === undefined) throw new Error(t('unavailable'));
+          if (latest.status !== 'ready' || latest.value === undefined) {
+            setNotice({ kind: 'error', key: 'reloadFailed', detailKey: 'unavailable' }); return;
+          }
           const next = draftOf(latest.value);
           setDraft(next); setBase(next); setRevision(latest.revision);
         } catch (error) {
-          setNotice({ kind: 'error', text: `${t('reloadFailed')} ${error instanceof Error ? error.message : String(error)}` });
+          setNotice({ kind: 'error', key: 'reloadFailed', detail: error instanceof Error ? error.message : String(error) });
         } finally { setBusy(false); }
       };
       const save = async event => {
         event.preventDefault();
         if (busy || draft === null || !snapshot.writable || !dirty) return;
-        if (conflict || snapshot.revision !== revision) { setNotice({ kind: 'error', text: t('conflict') }); return; }
+        if (conflict || snapshot.revision !== revision) { setNotice({ kind: 'error', key: 'conflict' }); return; }
         if (Object.keys(validateDraft(draft, modelChoices(catalog.store.getSnapshot().value))).length > 0) return;
         const savedDraft = { ...draft };
         const ops = FIELDS.filter(key => savedDraft[key] !== base[key]).map(key => ({ op: 'set', path: [key], value: savedDraft[key] }));
         setBusy(true); setNotice(null);
         try {
           const accepted = await form.mutate(ops, revision);
-          if (!accepted) { setNotice({ kind: 'error', text: t('saveFailed') }); return; }
+          if (!accepted) { setNotice({ kind: 'error', key: 'saveFailed' }); return; }
           const latest = form.getSnapshot();
           const next = draftOf(latest.value ?? savedDraft);
           setDraft(next); setBase(next); setRevision(latest.revision);
-          setNotice({ kind: 'success', text: t('saved') });
+          setNotice({ kind: 'success', key: 'saved' });
         } catch (error) {
-          setNotice({ kind: 'error', text: `${t('saveFailed')} ${error instanceof Error ? error.message : String(error)}` });
+          setNotice({ kind: 'error', key: 'saveFailed', detail: error instanceof Error ? error.message : String(error) });
         } finally { setBusy(false); }
       };
       const help = text => h('p', { className: 'ar-help' }, text);
@@ -318,11 +400,12 @@ window.__ModuleLoader__.load({
         onChange: event => update(key, event.target.value === '' ? '' : Number(event.target.value)),
       }), null, errors[key], `ar-${key}`);
       const loadError = mirrored.error;
+      const noticeText = notice ? [t(notice.key), notice.detailKey ? t(notice.detailKey) : notice.detail].filter(Boolean).join(' ') : '';
       if (draft === null || snapshot.status !== 'ready') return h('section', { 'data-auto-review-settings': '', 'aria-labelledby': 'ar-title' },
         h('h2', { id: 'ar-title' }, t('title')), help(t('scope')),
         h('p', { role: loadError ? 'alert' : 'status', className: loadError ? 'ar-error' : 'ar-help' }, loadError ? `${t('unavailable')} ${String(loadError)}` : t(snapshot.status === 'unavailable' ? 'unavailable' : 'loading')),
         h('button', { type: 'button', onClick: () => void reload(), disabled: busy }, t(busy ? 'reloading' : 'reloadAll')),
-        notice ? h('p', { className: 'ar-error', role: 'alert' }, notice.text) : null);
+        notice ? h('p', { className: 'ar-error', role: 'alert' }, noticeText) : null);
       const visible = choices.filter(choice => `${choice.providerName} ${choice.provider} ${choice.model.name ?? ''} ${choice.model.id}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
       const groups = [...new Set(visible.map(choice => choice.provider))];
       const modelKey = JSON.stringify([draft.provider, draft.model]);
@@ -390,7 +473,8 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', disabled: busy, onClick: () => void reload() }, t('reload')),
           h('span', { className: 'ar-help', role: 'status' }, t(dirty ? 'unsaved' : 'clean')),
         ),
-        notice ? h('p', { className: notice.kind === 'success' ? 'ar-success' : 'ar-error', role: notice.kind === 'error' ? 'alert' : 'status', 'aria-live': 'polite' }, notice.text) : null,
+        notice ? h('p', { className: notice.kind === 'success' ? 'ar-success' : 'ar-error', role: notice.kind === 'error' ? 'alert' : 'status', 'aria-live': 'polite' }, noticeText) : null,
+        h(DangerZone, { connection, t }),
       );
     }
 
@@ -828,9 +912,16 @@ window.__ModuleLoader__.load({
         return () => document.removeEventListener('keydown', onKeyDown);
       }, [open]);
       if (!snapshot.records.length && !snapshot.error && !snapshot.loading) return null;
+      const { totals, usageCoverage } = snapshot.summary ?? {};
+      const reported = usageCoverage?.totalTokens ?? 0;
+      const total = reported > 0 ? totals.totalTokens : null;
+      const scaled = value => value >= 100 ? String(Math.round(value)) : String(Math.round(value * 10) / 10);
+      const count = total === null ? (snapshot.loading ? '…' : t('usageUnknown'))
+        : total < 1000 ? String(total) : total < 1000000 ? `${scaled(total / 1000)}K` : `${scaled(total / 1000000)}M`;
+      const description = `${t('usageTitle')}: ${total === null ? count : `${total.toLocaleString()} tok`}${reported > 0 && reported < totals.attempts ? ` · ${t('usagePartial', { reported, attempts: totals.attempts })}` : ''}`;
       return h('span', { ref: rootRef, className: 'ar-review-usage-menu', 'data-composer-stat': 'auto-review-usage' },
-        h('button', { type: 'button', className: 'ar-review-usage-trigger', 'aria-haspopup': 'dialog', 'aria-expanded': open, onClick: () => setOpen(value => !value) },
-          h(IconDatabaseOutlineRegular, { width: 14, height: 14, 'aria-hidden': true }), t('usageTitle')),
+        h('button', { type: 'button', className: 'ar-review-usage-trigger', 'aria-haspopup': 'dialog', 'aria-expanded': open, 'aria-label': description, title: description, onClick: () => setOpen(value => !value) },
+          h(PermissionIconAutoReviewRegular, { width: 14, height: 14, 'aria-hidden': true }), total === null ? count : `${count} tok`),
         open ? createPortal(h('div', { ref: panelRef, className: 'ar-review-usage-panel', role: 'dialog', tabIndex: -1, 'aria-label': t('usageTitle'), style: position ?? { visibility: 'hidden', top: 0, left: 0 } },
           h(ReviewHistoryStatus, { snapshot, store, t }),
           snapshot.loading ? h('p', { role: 'status' }, t('usageLoading')) : null,
@@ -894,7 +985,7 @@ window.__ModuleLoader__.load({
       const t = ctx.locale.bind(NS);
       ctx.effect(() => ctx.configForms.whileServed(['auto-review-desktop'], () => ctx.slots.inject('settings.section', () => ctx.slots.register({
         name: 'settings.section', id: 'auto-review-desktop', order: 12, label: () => t('nav'), locale: NS,
-        inject: () => ({ form: ctx.configForms.get('auto-review-desktop'), mirror: ctx.configForms.describe(), catalog: ctx.modelDirectories.catalog }),
+        inject: () => ({ form: ctx.configForms.get('auto-review-desktop'), mirror: ctx.configForms.describe(), catalog: ctx.modelDirectories.catalog, connection: ctx.connection }),
       }, SettingsSection))), 'auto-review-desktop: native settings section');
     }
     return {
@@ -902,7 +993,7 @@ window.__ModuleLoader__.load({
       inject: ['slots', 'locale', 'configForms', 'modelDirectories', 'connection', 'uiConversation'],
       apply,
       // Pure helpers and the components are exported for offline contract tests.
-      SettingsSection, UsageCard, draftOf, sameDraft, modelChoices, validateDraft,
+      SettingsSection, DangerZone, UsageCard, draftOf, sameDraft, modelChoices, validateDraft,
       localizePermissionCatalog, decoratePermissionTree, registerPermissionPresentation, permissionDictionaries: { en, zh },
       createApprovalCollector, approvalRoot, readApprovalCall, ChildApprovalSummary, ChildApprovalItem, registerChildApprovals,
       loadApprovalDetail, ApprovalDetailBody, NativeApprovalDetail, registerApprovalDetails,

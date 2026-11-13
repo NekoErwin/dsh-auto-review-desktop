@@ -3,6 +3,7 @@ import { createReviewGate } from './gate.js';
 import { DEFAULTS, normalizeConfig, ReviewStats } from './runtime.js';
 import { createAuditJournal } from './audit.js';
 import { createReviewHistory } from './history.js';
+import { createDataCleanup } from './cleanup.js';
 import { registerDesktopPreset } from './preset.js';
 import { createDelegationPolicy } from './delegation.js';
 import { createHumanApprovalGuard } from './human-approval.js';
@@ -39,10 +40,20 @@ export function apply(ctx,config) {
   const runtime=createReviewGate(ctx,readConfig,{stats,history});
   const delegation=createDelegationPolicy(ctx,readConfig);
   const human=createHumanApprovalGuard(ctx,readConfig);
+  const cleanup=createDataCleanup({profileHome:ctx.get('profileContext')?.dir,history,journal,
+    stop:async()=>{human.close();delegation.close();await runtime.close({strict:true});}});
   ctx.provide('autoReviewDesktop',runtime);
   ctx.effect(()=>ctx.settings.configure({auto:false}),'auto-review-desktop settings');
   const statusHandler=async(endpoint,_payload,_signal,peer)=>{
     if(peer?.principal?.kind!=='owner')return {ok:false,error:{code:'FORBIDDEN',message:'Owner access required'}};
+    if(endpoint==='cleanup-preview' || endpoint==='cleanup') {
+      // A destructive confirmation stays user-only: do not expose a tool or session command that erases audit evidence.
+      if(peer!==ctx.connection.browserPeer)return {ok:false,error:{code:'FORBIDDEN',message:'Use the authenticated settings page to confirm cleanup'}};
+      try {
+        const value=endpoint==='cleanup-preview'?await cleanup.prepare(peer.id):await cleanup.clean(peer.id,_payload,_signal);
+        return {ok:true,value};
+      } catch(error) {return {ok:false,error:{code:error?.code??'CLEANUP_FAILED',message:'Cleanup could not complete; data may remain and review may be stopped.',details:{stopped:cleanup.stopped}}};}
+    }
     if(endpoint==='history' || endpoint==='watch-history') {
       const {sessionId,revision}=_payload??{};
       if(typeof sessionId!=='string' || !sessionId || sessionId.length>256 || (endpoint==='watch-history' && (!Number.isSafeInteger(revision) || revision<0)))

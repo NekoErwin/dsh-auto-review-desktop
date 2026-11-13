@@ -3,13 +3,14 @@ import { join } from 'node:path';
 
 /** Profile-owned audit, separate from core Session logs; no arguments, transcript, raw error or reviewer reason. */
 export function createAuditJournal(profileHome, logger) {
-  let pending=Promise.resolve();let warned=false;let available=Boolean(profileHome);
+  let pending=Promise.resolve();let warned=false;let closed=false;let available=Boolean(profileHome);
   if(!profileHome) {logger?.warn('auto-review-desktop: no profile directory; durable audit is unavailable');return {available:false,write(){},async close(){}};}
   const folder=join(profileHome,'.plugin-data','dsh-auto-review-desktop');
   const file=join(folder,`reviews.${process.pid}.jsonl`);
   return {
     get available(){return available;},
     write(event) {
+      if(closed)return;
       const line=JSON.stringify(event)+'\n';
       pending=pending.then(async()=>{
         await mkdir(folder,{recursive:true});
@@ -18,6 +19,6 @@ export function createAuditJournal(profileHome, logger) {
         await appendFile(file,line,{encoding:'utf8',mode:0o600});
       }).catch(()=>{available=false;if(!warned){warned=true;logger?.warn('auto-review-desktop: profile audit write failed; review decisions remain fail-closed');}});
     },
-    async close(){await pending;},
+    async close(){closed=true;available=false;await pending;},
   };
 }

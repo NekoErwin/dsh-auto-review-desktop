@@ -1,0 +1,34 @@
+name: Package checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  package:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Check committed client and resources
+        run: node scripts/check-package.mjs
+      - name: Build and check for source drift
+        run: |
+          node scripts/build.mjs
+          git diff --exit-code -- lib/client.js
+      - name: Test runtime archive extraction
+        run: python -B test/extract-runtime.test.py
+      - name: Pack and inspect release files
+        run: |
+          python scripts/package-deliverables.py
+          python scripts/verify-archive.py

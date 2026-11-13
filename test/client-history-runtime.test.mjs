@@ -2,15 +2,22 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import * as cordis from '@deepseek-ai/cordis';
 import { createReviewHistory } from '../src/history.js';
 import { fixture } from './helpers.mjs';
+
+// Use the same runtime selection as runtime-loader.mjs for direct asset reads.
+const runtimeBase = process.env.DSH_TEST_RUNTIME
+  ? pathToFileURL(resolve(process.env.DSH_TEST_RUNTIME, 'package.json'))
+  : new URL('../runtime-test/dsh/package.json', import.meta.url);
 
 // The exact Desktop baseline SlotCore is bundled into the shipped web shell,
 // not published as an independently importable Node module. Execute that class
 // verbatim; this fixture never renders React or substitutes a Slot registry.
 function loadDesktopSlotCore() {
-  const code = readFileSync(new URL('../runtime-test/dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-BgUyXZcc.js', import.meta.url), 'utf8');
+  const code = readFileSync(new URL('node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-BgUyXZcc.js', runtimeBase), 'utf8');
   const start = code.indexOf('var OI=class{records=new Map');
   const end = code.indexOf(';const MI=Object.freeze', start);
   assert(start >= 0 && end > start, 'Desktop 0.2.2-rc.1 baseline SlotCore must be available');
@@ -24,7 +31,7 @@ function loadRegistry(SlotCore) {
     '@deepseek-ai/cordis': cordis,
     '@deepseek-ai/dsh-client-ui-slots': { SlotCore, SlotOwnershipError: Error, StaleAuthorizationError: Error },
   };
-  vm.runInNewContext(readFileSync(new URL('../runtime-test/dsh/node_modules/@deepseek-ai/dsh-client-ui-renderer/lib/client.js', import.meta.url), 'utf8'), {
+  vm.runInNewContext(readFileSync(new URL('node_modules/@deepseek-ai/dsh-client-ui-renderer/lib/client.js', runtimeBase), 'utf8'), {
     queueMicrotask, console, window: { __ModuleLoader__: { load(def) { registry = def.factory(name => { assert(name in modules, name); return modules[name]; }).SlotRegistry; } } },
   });
   return registry;
@@ -37,7 +44,7 @@ function loadPlugin() {
   return plugin;
 }
 function loadConversationEventRegistry() {
-  const code = readFileSync(new URL('../runtime-test/dsh/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js', import.meta.url), 'utf8');
+  const code = readFileSync(new URL('node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js', runtimeBase), 'utf8');
   const start = code.indexOf('var ConversationDefinitionRegistry = class');
   const assertion = code.indexOf('function assertDefinitionTarget(', start);
   const end = code.indexOf('\n\t\t//#endregion', assertion);
